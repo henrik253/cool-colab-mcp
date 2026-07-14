@@ -50,6 +50,7 @@ DEFAULT_HOME_DIR = "~/.cool-colab-mcp"
 STORAGE_SUFFIX = ".json"
 STORAGE_LOCK_SUFFIX = ".lock"
 PROCESS_REGISTRY_STORE = "servers"  # storage.py store of running WebSocket servers
+REGISTRY_STORE = "registry"  # storage.py store holding the notebook registry
 
 # Server and logging
 SERVER_NAME = "CoolColabMCP"

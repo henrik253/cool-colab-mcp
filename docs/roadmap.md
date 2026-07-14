@@ -19,8 +19,8 @@ today only the merged skeleton shows checks. In-flight branches and their exact 
 |---|---|---|---|
 | Architecture skeleton | 0/2/3/6/7 | — | ✅ **Merged** to `integration` (PR #2, `14fdbbc`) |
 | Upstream reliability fixes | 2 | — | ✅ **Merged** to `integration` (PR #3, `3b30d3b`) |
-| Structured logging + doctor | 4 | `feature/logging-doctor` | 🟡 Integration review findings fixed; gates green — final re-review pending |
-| Notebook registry | 5 | `feature/notebook-registry` | 🟡 Committed (`55c1991`), reviewed → **REQUEST CHANGES** (4 findings); fixes **partially applied** (records.py/tools.py done; 2 record-level tests not yet added) |
+| Structured logging + doctor | 4 | — | ✅ **Merged** to `integration` (PR #4, `3537363`) |
+| Notebook registry | 5 | `feature/notebook-registry` | 🟡 Concurrency review fix applied; gates green — final re-review pending |
 | Persistent auth | 9 | `feature/persistent-auth` | 🟡 Committed (`2a61e9c`), reviewed → **REQUEST CHANGES** (1 blocking: broaden refresh exception catch; 2 minor); fixes not yet applied |
 | Snapshots / uploads / runtime | 8/10/11 | — | ⬜ **Wave 2 — not started** |
 
@@ -178,12 +178,43 @@ over every instrumented module), `TestNamespacedLoggers::test_registry_failure_u
 
 ## 5. Notebook registry (plan.md §4)
 
-- [ ] Persistent notebook records (id, name, url, preferred_runtime)
-- [ ] Tools: `register_notebook`, `list_notebooks`, `remove_notebook`, `get_notebook_status`
-- [ ] `open_notebook` / `close_notebook` resolve a registered id and open via notebook targeting
-- [ ] Registry survives server restart
+- [x] Persistent notebook records (id, name, url, preferred_runtime) — `registry/records.py`
+      on top of `storage.py`; `preferred_runtime` is stored only, behavior arrives with §8
+- [x] Tools: `register_notebook`, `list_notebooks`, `remove_notebook`, `get_notebook_status`
+      (`registry/tools.py`, wired into `build_server`)
+- [x] `open_notebook` / `close_notebook` resolve a registered id and open via notebook
+      targeting — `open_notebook` reuses the exact `open_colab_browser_connection` flow
+      (extracted as `server.open_connection`) with the registered URL as `notebook_url`
+      and the registry id as the session `notebook_id`
+- [x] Registry survives server restart
 
-**Tests:** —
+**Tests:** `records_test.py::TestNotebookRecord`
+(`test_empty_or_reserved_notebook_id_rejected` (parametrized),
+`test_url_validated_with_validate_notebook_url`, `test_preferred_runtime_optional_and_stored`),
+`records_test.py::TestNotebookRegistry` (`test_corrupted_store_raises_structured_error`,
+`test_register_get_roundtrip`, `test_list_all_records`,
+`test_concurrent_registrations_do_not_overwrite_records`,
+`test_reregister_same_id_updates`, `test_remove`, `test_get_unknown_raises_structured_error`,
+`test_concurrent_removals_do_not_restore_records`,
+`test_remove_unknown_raises_structured_error`, `test_persists_across_reinstantiation`),
+`registry_tools_test.py::TestToolSurface::test_registry_tools_listed`,
+`registry_tools_test.py::TestRegisterNotebook` (`test_registers_and_returns_record`,
+`test_reregistering_existing_id_updates`, `test_invalid_url_returns_invalid_input`,
+`test_empty_notebook_id_returns_invalid_input`),
+`registry_tools_test.py::TestListNotebooks` (`test_empty_registry_lists_nothing`,
+`test_lists_all_records`), `registry_tools_test.py::TestRemoveNotebook`
+(`test_removes_record`, `test_unknown_id_returns_unknown_notebook`),
+`registry_tools_test.py::TestGetNotebookStatus` (`test_unknown_id_returns_unknown_notebook`,
+`test_registered_without_session`, `test_disconnected_session`,
+`test_connected_session_reports_active_url`), `registry_tools_test.py::TestOpenNotebook`
+(`test_opens_registered_url_and_names_session`, `test_unknown_id_returns_unknown_notebook`,
+`test_already_connected_returns_without_reopening`,
+`test_session_connected_to_other_notebook_returns_invalid_input`,
+`test_reports_progress_while_waiting`), `registry_tools_test.py::TestCloseNotebook`
+(`test_closes_session_but_keeps_record`,
+`test_registered_but_never_opened_closes_idempotently`,
+`test_unregistered_id_returns_unknown_notebook`),
+`registry_tools_test.py::TestPersistenceAcrossRestart::test_registry_survives_server_restart`
 
 ## 6. Reusable `NotebookSession` (plan.md §6)
 
