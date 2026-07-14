@@ -27,7 +27,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 from websockets.typing import Subprotocol
 
-from colab_mcp.constants import COLAB, COLAB_ALT_DOMAIN
+from cool_colab_mcp.constants import COLAB, COLAB_ALT_DOMAIN
 
 
 class ColabWebSocketServer:

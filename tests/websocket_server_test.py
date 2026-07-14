@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import asyncio
-from colab_mcp.websocket_server import ColabWebSocketServer
+from cool_colab_mcp.sessions.websocket_server import ColabWebSocketServer
 from mcp.types import JSONRPCRequest, JSONRPCResponse, JSONRPCMessage
 from mcp.shared.message import SessionMessage
 import pytest

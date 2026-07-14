@@ -12,15 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""All constants, URLs, and paths used across the package."""
-
-COLAB = "https://colab.research.google.com"
-COLAB_ALT_DOMAIN = "https://colab.google.com"
-SCRATCH_PATH = "/notebooks/empty.ipynb"
-
-UI_CONNECTION_TIMEOUT = 60.0  # secs
-
-FE_CONNECTED_KEY = "fe_connected"
-PROXY_TOKEN_KEY = "proxy_token"
-PROXY_PORT_KEY = "proxy_port"
-INJECTED_TOOL_NAME = "open_colab_browser_connection"
+"""Per-notebook sessions: WebSocket server, proxy client, and routing (plan.md §6)."""
