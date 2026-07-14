@@ -4,6 +4,10 @@ Progress tracker for [plan.md](plan.md). One section per feature, in the order o
 Rules: check bullets as they land; every feature lists the test cases that cover it; update this
 file in the same branch as the feature itself.
 
+Feature PRs target the `integration` branch (see CLAUDE.md "Integration → main"). Because they
+overlap heavily, sections 3, 6, and 7 (+ the package rename and tool pre-registration) are
+implemented together on one branch: `feature/architecture-skeleton`.
+
 Status legend: `[ ]` open · `[x]` done
 
 ---

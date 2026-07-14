@@ -42,9 +42,9 @@ Python 3.13, managed by `uv`. Never use `pip` directly.
 Every feature follows this exact loop:
 
 1. **Pick** the next feature from roadmap.md (ordered by plan.md §17).
-2. **Branch + worktree:**
-   `git worktree add ../cool-colab-mcp-worktrees/feature-<slug> -b feature/<slug>`
-   Work only inside that worktree; never commit feature work directly on `main`.
+2. **Branch + worktree** (always branched from `integration`):
+   `git worktree add ../cool-colab-mcp-worktrees/feature-<slug> -b feature/<slug> integration`
+   Work only inside that worktree; never commit feature work directly on `main` or `integration`.
 3. **Implement** the feature together with its tests. A feature without tests is not done.
 4. **Update roadmap.md**: check off the feature's bullet points and list the test cases added.
 5. **Verify locally**: `uv run pytest` (full suite) and `uv run ruff check .` must pass.
@@ -52,10 +52,19 @@ Every feature follows this exact loop:
 7. **Review**: launch the `plan-reviewer` agent (`.claude/agents/plan-reviewer.md`) on the
    squashed commit. It critically compares the change against plan.md. Address its findings
    before pushing.
-8. **PR**: push the branch and open a PR against `main` with `gh pr create`. CI (ruff + full
-   pytest suite) must be green before merging. Merge with **squash-merge**.
+8. **PR**: push the branch and open a PR against **`integration`** — feature PRs never target
+   `main` directly. CI (ruff + full pytest suite) must be green before merging. Merge with
+   **squash-merge**.
 9. **Clean up**: `git worktree remove ../cool-colab-mcp-worktrees/feature-<slug>` and delete
    the branch.
+
+### Integration → main
+
+Feature PRs collect on the `integration` branch. When a development wave is complete, run the
+`integration-refactorer` agent (`.claude/agents/integration-refactorer.md`) over the full
+`main..integration` diff: it removes redundancy across features, simplifies, and keeps the
+suite green. After its cleanup lands on `integration`, open a single PR `integration` → `main`
+for user review.
 
 ## Testing
 
