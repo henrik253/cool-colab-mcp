@@ -1,73 +1,96 @@
-# Colab-mcp
+# Cool Colab MCP
 
-An MCP server for bridging your local agent to a Colab session in the browser.
+**An MCP server that turns Google Colab notebooks into persistent, named workspaces for AI
+agents.**
 
-# Supported Clients
-This MCP server requires client support for `notifications/tools/list_changed` and for the client to be running locally on your device. 
+With plain Colab MCP, your agent gets a temporary scratch notebook that is gone when the
+browser tab closes. Cool Colab MCP makes notebooks durable resources instead: an agent can
+register a notebook once, reopen it after any restart, keep several notebooks connected at
+the same time, upload files straight into the runtime, and switch between CPU and GPU
+runtimes — all without you clicking through the browser.
 
-Popular clients that fit these criteria include:
-- Gemini CLI
-- Claude Code
-- Windsurf
+> Registered notebooks are persistent resources. Browser tabs, WebSocket connections, and
+> Colab runtimes are replaceable sessions attached to them.
 
+This is an improved fork of [googlecolab/colab-mcp](https://github.com/googlecolab/colab-mcp).
 
-# Setup
+## What this fork adds
 
-- Install `uv` (`pip install uv`)
-- Configure for usage (eg for mcp.json style services):
+| Feature | Upstream | Cool Colab MCP |
+|---|---|---|
+| Reopen an existing notebook | No — always a blank scratch notebook | Per-connection `notebook_url`, notebook registry |
+| Multiple notebooks at once | No — one connection, one tab | One independent session per notebook |
+| Survive restarts | No | Persistent auth, registry, and snapshots on disk |
+| Save/restore notebook content | No | `.ipynb` snapshots with restore and export |
+| Files into the runtime | Manual browser upload | Chunked upload to `/content` with SHA-256 verification |
+| CPU/GPU switching | Removed upstream | OAuth runtime API (T4 / L4 / A100 / TPU) |
+| Tools visible at startup | No — requires `tools/list_changed` | Pre-registered tool surface |
+| Headless server operation | No | Managed Chromium via Playwright (Phase 2) |
 
+Reliability fixes are cherry-picked with attribution from the
+[SebastianGilPinzon/colab-mcp](https://github.com/SebastianGilPinzon/colab-mcp) fork
+(Apache 2.0).
+
+## Architecture
+
+The MCP server cannot control Colab directly — it bridges your local agent to the Colab
+frontend running in a browser tab. Cool Colab MCP wraps that bridge in a management layer
+and stamps out one complete session per notebook:
+
+```text
+AI Agent
+   |
+Cool Colab MCP
+   |
+   +-- Notebook Registry        names, URLs, preferred runtimes (persistent)
+   +-- Session Manager          routes every tool call by notebook_id
+   +-- Snapshot Manager         .ipynb snapshots on disk
+   +-- Authentication Manager   keyring + persistent browser profile
+   +-- File Transfer            chunked uploads into /content
+   +-- Browser Controller       managed Chromium (Phase 2)
+   |
+   +-- NotebookSession A ── WebSocket A ── Colab tab A ── Runtime A (GPU)
+   +-- NotebookSession B ── WebSocket B ── Colab tab B ── Runtime B (CPU)
 ```
-...
+
+Each `NotebookSession` owns its own browser tab, WebSocket server, token/port, proxy
+client, and operation lock. The full design, feature specs, and development order live in
+[docs/plan.md](docs/plan.md); progress is tracked in [docs/roadmap.md](docs/roadmap.md).
+
+## Setup
+
+Requires [uv](https://docs.astral.sh/uv/) and a local MCP client (Claude Code, Gemini CLI,
+Cursor, ...).
+
+```json
+{
   "mcpServers": {
-    "colab-mcp": {
-      "command": "uvx",
-      "args": ["git+https://github.com/googlecolab/colab-mcp"],
-      "timeout": 30000
-    }
-  }
-...
-```
-
-(If you have a non-standard default package index (**Googlers**), you may also need to add `--index https://pypi.org/simple`)
-
-# Issues & Discussions
-
-We are using GitHub [discussions](https://github.com/googlecolab/colab-mcp/discussions) as the
-place for issue discussion and feature requests. As discussions mature into action items, we
-will add those items as issues. This helps us ensure that issues in the issue tracker are
-well-understood, deduplicated, and actionable. For these reasons, **please do <u>NOT</u> open
-issues directly.** 
-
-# Contributing 
-We unfortunately don't have the bandwidth to support review of external contributions, and we 
-don't want user PRs to languish, so we aren't accepting any external contributions right now.
-
-If you have a great idea or pain point, we would love to hear about it on our 
-[discussions](https://github.com/googlecolab/colab-mcp/discussions) page - the preferred place 
-for issue discussion and feature requests.
-
-# Internal - For Colab Developers
-
-### Prerequisites
-
-- `uv` is required (`pip install uv`)
-- Configure git hooks to run repo presubmits
-
-```shell
-git config core.hooksPath .githooks
-```
-
-### Gemini CLI setup
-
-```
-...
-  "mcpServers": {
-    "colab-mcp": {
+    "cool-colab-mcp": {
       "command": "uv",
-      "args": ["run", "colab-mcp"],
-      "cwd": "/path/to/github/colab-mcp",
+      "args": ["run", "--directory", "/path/to/cool-colab-mcp", "colab-mcp"],
       "timeout": 30000
     }
   }
-...
+}
 ```
+
+For development:
+
+```bash
+uv sync --group dev          # install deps
+uv run pytest                # run tests
+uv run pre-commit install    # once per clone
+```
+
+## Status
+
+Early development — Phase 1 (registry, multi-session, snapshots, uploads, runtime control)
+is being built feature by feature. See [docs/roadmap.md](docs/roadmap.md) for what works
+today.
+
+## Credits
+
+- [googlecolab/colab-mcp](https://github.com/googlecolab/colab-mcp) — the upstream project
+  and the browser-bridge protocol.
+- [SebastianGilPinzon/colab-mcp](https://github.com/SebastianGilPinzon/colab-mcp) —
+  reliability fixes and the OAuth `change_runtime` approach.

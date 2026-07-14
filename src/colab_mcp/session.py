@@ -28,14 +28,16 @@ from mcp.client.session import ClientSession
 from mcp.types import TextContent
 import webbrowser
 
-from colab_mcp.websocket_server import ColabWebSocketServer, COLAB, SCRATCH_PATH
-
-UI_CONNECTION_TIMEOUT = 60.0  # secs
-
-FE_CONNECTED_KEY = "fe_connected"
-PROXY_TOKEN_KEY = "proxy_token"
-PROXY_PORT_KEY = "proxy_port"
-INJECTED_TOOL_NAME = "open_colab_browser_connection"
+from colab_mcp.constants import (
+    COLAB,
+    FE_CONNECTED_KEY,
+    INJECTED_TOOL_NAME,
+    PROXY_PORT_KEY,
+    PROXY_TOKEN_KEY,
+    SCRATCH_PATH,
+    UI_CONNECTION_TIMEOUT,
+)
+from colab_mcp.websocket_server import ColabWebSocketServer
 
 
 class ColabTransport(ClientTransport):
