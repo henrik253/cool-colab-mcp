@@ -1,2 +1,5 @@
 __pycache__/
 .claude/settings.local.json
+
+# Persistent browser profile — session data and credentials, never committed
+browser-profile/
