@@ -20,6 +20,7 @@ a live Colab connection return a structured not_connected error — never an
 invisible tool, never a silent stub.
 """
 
+import logging
 import webbrowser
 from typing import Any
 
@@ -46,6 +47,8 @@ from cool_colab_mcp.errors import ToolFailed, fail
 from cool_colab_mcp.sessions.manager import SessionManager
 from cool_colab_mcp.sessions.session import NotebookSession, validate_notebook_url
 from cool_colab_mcp.utils import json_tool_result
+
+logger = logging.getLogger(__name__)
 
 
 def build_server(manager: SessionManager) -> FastMCP:
@@ -76,6 +79,12 @@ def build_server(manager: SessionManager) -> FastMCP:
         try:
             return await manager.get(notebook_id).call_tool(name, args)
         except ToolFailed as failure:
+            logger.warning(
+                "Tool '%s' on notebook '%s' failed: %s",
+                name,
+                notebook_id or "default",
+                failure.error.kind,
+            )
             return failure.error.as_result()
 
     @mcp.tool
@@ -133,6 +142,11 @@ def build_server(manager: SessionManager) -> FastMCP:
         # fragment stays the source of truth for the Colab frontend
         # (fix from SebastianGilPinzon/colab-mcp, Apache 2.0).
         separator = "&" if "?" in url else "?"
+        logger.info(
+            "Opening notebook session '%s' on port %d",
+            session.notebook_id,
+            session.port,
+        )
         webbrowser.open_new(
             f"{url}{separator}{TAB_DEDUP_PARAM}={session.port}"
             f"#{PROXY_TOKEN_PARAM}={session.token}&{PROXY_PORT_PARAM}={session.port}"
@@ -149,6 +163,11 @@ def build_server(manager: SessionManager) -> FastMCP:
             ),
         )
         connected = await session.await_connection(UI_CONNECTION_TIMEOUT)
+        logger.info(
+            "Session '%s' %s",
+            session.notebook_id,
+            "connected" if connected else "timed out waiting for the browser",
+        )
         await ctx.report_progress(
             progress=3,
             total=3,

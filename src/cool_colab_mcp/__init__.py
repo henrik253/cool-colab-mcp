@@ -17,29 +17,14 @@
 import argparse
 import asyncio
 import datetime
-import logging
 import sys
 import tempfile
 
-from fastmcp.utilities import logging as fastmcp_logger
-
-from cool_colab_mcp import process_registry
-from cool_colab_mcp.constants import LOG_DIR_PREFIX, LOG_FILE_PREFIX, LOGGER_NAME
+from cool_colab_mcp import doctor, process_registry
+from cool_colab_mcp.constants import LOG_DIR_PREFIX
+from cool_colab_mcp.logging_setup import init_logging
 from cool_colab_mcp.server import build_server
 from cool_colab_mcp.sessions.manager import SessionManager
-
-
-def init_logger(logdir: str) -> None:
-    log_filename = datetime.datetime.now().strftime(
-        f"{logdir}/{LOG_FILE_PREFIX}.%Y-%m-%d_%H-%M-%S.log"
-    )
-    logging.basicConfig(
-        format="%(asctime)s %(levelname)s:%(message)s",
-        datefmt="%m/%d/%Y %I:%M:%S %p",
-        filename=log_filename,
-        level=logging.INFO,  # Set the minimum logging level to capture
-    )
-    fastmcp_logger.get_logger(LOGGER_NAME).info("logging to %s", log_filename)
 
 
 def parse_args(v: list[str]) -> argparse.Namespace:
@@ -68,6 +53,18 @@ def parse_args(v: list[str]) -> argparse.Namespace:
         "and exit (fixes stale browser tabs pointing at dead ports)",
         action="store_true",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="log at DEBUG level instead of INFO",
+    )
+    subcommands = parser.add_subparsers(dest="command")
+    subcommands.add_parser(
+        "doctor",
+        help="check the local environment (versions, directories, port binding) "
+        "and report each item as pass/fail",
+    )
     return parser.parse_args(v)
 
 
@@ -92,20 +89,17 @@ def kill_stale() -> None:
         print(f"removed pid={entry.pid} port={entry.port}")
 
 
-async def main_async() -> None:
-    args = parse_args(sys.argv[1:])
-    init_logger(args.log)
-
+async def main_async(args: argparse.Namespace | None = None) -> None:
+    args = args or parse_args(sys.argv[1:])
+    init_logging(args.log, verbose=args.verbose)
     if args.list_running:
         print_running()
         return
     if args.kill_stale:
         kill_stale()
         return
-
     # Entries from crashed runs would otherwise accumulate forever.
     process_registry.prune_dead()
-
     manager = SessionManager()
     try:
         await build_server(manager).run_async()
@@ -114,4 +108,13 @@ async def main_async() -> None:
 
 
 def main() -> None:
-    asyncio.run(main_async())
+    args = parse_args(sys.argv[1:])
+    if args.list_running:
+        print_running()
+        return
+    if args.kill_stale:
+        kill_stale()
+        return
+    if args.command == "doctor":
+        sys.exit(doctor.main(args.log))
+    asyncio.run(main_async(args))

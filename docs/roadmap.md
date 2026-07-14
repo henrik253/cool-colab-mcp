@@ -18,13 +18,13 @@ today only the merged skeleton shows checks. In-flight branches and their exact 
 | Feature | Section | Branch | State |
 |---|---|---|---|
 | Architecture skeleton | 0/2/3/6/7 | — | ✅ **Merged** to `integration` (PR #2, `14fdbbc`) |
-| Upstream reliability fixes | 2 | `feature/reliability-fixes` | 🟡 Code complete, gates green, plan-review findings fixed — PR pending |
-| Structured logging + doctor | 4 | `feature/logging-doctor` | 🟡 Committed (`da48f78`), reviewed → **REQUEST CHANGES** (2 minor: URL-logging wording, single-source `WEBSOCKET_HOST`); fixes not yet applied |
+| Upstream reliability fixes | 2 | — | ✅ **Merged** to `integration` (PR #3, `3b30d3b`) |
+| Structured logging + doctor | 4 | `feature/logging-doctor` | 🟡 Integration review findings fixed; gates green — final re-review pending |
 | Notebook registry | 5 | `feature/notebook-registry` | 🟡 Committed (`55c1991`), reviewed → **REQUEST CHANGES** (4 findings); fixes **partially applied** (records.py/tools.py done; 2 record-level tests not yet added) |
 | Persistent auth | 9 | `feature/persistent-auth` | 🟡 Committed (`2a61e9c`), reviewed → **REQUEST CHANGES** (1 blocking: broaden refresh exception catch; 2 minor); fixes not yet applied |
 | Snapshots / uploads / runtime | 8/10/11 | — | ⬜ **Wave 2 — not started** |
 
-None of the 🟡 branches have a PR yet. Resuming means: finish each branch's review fixes →
+None of the remaining 🟡 branches have a PR yet. Resuming means: finish each branch's review fixes →
 squash → push → PR into `integration` → CI green → squash-merge (one at a time), then launch
 Wave 2, then the integration refactor sweep before `integration` → `main`.
 
@@ -140,10 +140,41 @@ tool), `test_connected_tool_forwards_to_proxy_client` (parametrized);
 
 ## 4. Structured logging and `doctor`
 
-- [ ] Structured logging across server, sessions, and WebSocket layers
-- [ ] `doctor` command that checks config, auth state, connectivity, and stale servers
+- [x] Structured logging across server, sessions, and WebSocket layers: namespaced
+      `cool_colab_mcp.<module>` loggers, one timestamp/level/name/message format
+      (`logging_setup.py`), file logging under `--log`, `-v/--verbose` for DEBUG;
+      tokens and token-carrying URLs are never logged (port, notebook_id, and event only)
+- [x] `doctor` subcommand (`cool-colab-mcp doctor`) that checks config and connectivity:
+      Python/package versions, storage dir (`COOL_COLAB_MCP_HOME`) writable, log dir
+      writable, WebSocket port bind, stale-server registry, `COLAB_MCP_NOTEBOOK_URL` pin
+      (informational); pass/fail per check with a fix hint, exit 0/1
+- [ ] Auth-state doctor checks arrive with persistent auth (section 9) by appending to
+      `doctor.run_checks`
 
-**Tests:** —
+**Tests:** `doctor_test.py` (`TestChecks::test_all_checks_pass_in_healthy_env`,
+`TestChecks::test_python_version_too_old_fails`,
+`TestChecks::test_package_metadata_missing_fails`,
+`TestChecks::test_storage_dir_blocked_by_file_fails`,
+`TestChecks::test_log_dir_blocked_by_file_fails`,
+`TestChecks::test_port_bind_failure_fails`,
+`TestChecks::test_env_pin_is_informational_either_way`,
+`TestChecks::test_no_stale_servers_passes`,
+`TestChecks::test_registered_servers_fail_with_cleanup_hint`,
+`TestChecks::test_registry_read_failure_is_actionable`,
+`TestMain::test_exit_zero_and_pass_lines_when_healthy`,
+`TestMain::test_exit_one_and_fail_line_on_failure`,
+`TestMain::test_cli_doctor_subcommand_exits_with_check_status`,
+`TestParseArgs::test_doctor_subcommand_parsed`, `TestParseArgs::test_default_is_serve`),
+`logging_setup_test.py`
+(`TestInitLogging::test_record_format_has_timestamp_level_name_message`,
+`TestInitLogging::test_logs_its_own_destination`,
+`TestInitLogging::test_default_level_is_info`,
+`TestInitLogging::test_verbose_enables_debug`,
+`TestInitLogging::test_verbose_flag_parses_and_sets_debug`,
+`TestInitLogging::test_missing_log_dir_raises`,
+`TestNamespacedLoggers::test_module_logger_is_namespaced_after_its_module` (parametrized
+over every instrumented module), `TestNamespacedLoggers::test_registry_failure_uses_websocket_module_logger`,
+`TestNoSecretsInLogs::test_session_token_never_logged_when_opening_connection`)
 
 ## 5. Notebook registry (plan.md §4)
 

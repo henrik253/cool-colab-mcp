@@ -34,7 +34,7 @@ from cool_colab_mcp.constants import (
     COLAB_ALT_DOMAIN,
     IPV4_LOOPBACK,
     PORT_BIND_ATTEMPTS,
-    WS_HOST,
+    WEBSOCKET_HOST,
 )
 
 
@@ -45,13 +45,16 @@ def _probe_free_port() -> int:
         return sock.getsockname()[1]
 
 
+logger = logging.getLogger(__name__)
+
+
 class ColabWebSocketServer:
     """
     A WebSocket server designed to accept a single connection specifically
     from a Google Colab session (colab.google.com).
     """
 
-    def __init__(self, host: str = WS_HOST) -> None:
+    def __init__(self, host: str = WEBSOCKET_HOST) -> None:
         self.host = host
         self.port = 0
         self.connection_lock = asyncio.Lock()
@@ -170,7 +173,7 @@ class ColabWebSocketServer:
         Validates Origin and ensures single-client exclusivity.
         """
         if self.connection_lock.locked():
-            logging.warning(
+            logger.warning(
                 f"Connection rejected: {websocket.remote_address}. A client is already connected"
             )
             await websocket.close(code=1013, reason="Server is busy")
@@ -179,6 +182,7 @@ class ColabWebSocketServer:
         async with self.connection_lock:
             try:
                 self.connection_live.set()
+                logger.info("Colab frontend connected on port %d", self.port)
 
                 reading_task = asyncio.create_task(self._read_from_socket(websocket))
                 writing_task = asyncio.create_task(self._write_to_socket(websocket))
@@ -190,14 +194,15 @@ class ColabWebSocketServer:
                     task.cancel()
 
             except websockets.exceptions.ConnectionClosed as e:
-                logging.info(f"Connection closed: {e.code} - {e.reason}")
+                logger.info(f"Connection closed: {e.code} - {e.reason}")
                 await self._read_stream_writer.send(
                     Exception("Colab Frontend disconnected")
                 )
             except Exception as e:
-                logging.error(f"Unexpected error: {e}")
+                logger.error(f"Unexpected error: {e}")
             finally:
                 self.connection_live.clear()
+                logger.info("Colab frontend disconnected from port %d", self.port)
 
     async def __aenter__(self):
         # Dual-stack bind on ONE port. With host="localhost" and port=0, IPv4
@@ -228,12 +233,12 @@ class ColabWebSocketServer:
         try:
             process_registry.register(port=self.port, host=self.host)
         except Exception as exc:  # registry trouble must never block serving
-            logging.warning(f"Could not record server in process registry: {exc}")
-        logging.info(f"Starting WebSocket server on ws://{self.host}:{self.port}")
+            logger.warning("Could not record server in process registry: %s", exc)
+        logger.info(f"Starting WebSocket server on ws://{self.host}:{self.port}")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        logging.info("Closing WebSocket server")
+        logger.info("Closing WebSocket server on port %d", self.port)
         if self._server:
             self._server.close()
             self.write_stream.close()
@@ -242,4 +247,4 @@ class ColabWebSocketServer:
             try:
                 process_registry.unregister(self.port)
             except Exception as exc:
-                logging.warning(f"Could not unregister server: {exc}")
+                logger.warning("Could not unregister server: %s", exc)

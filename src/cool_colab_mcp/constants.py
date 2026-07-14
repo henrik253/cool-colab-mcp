@@ -29,7 +29,7 @@ PROXY_PORT_PARAM = "mcpProxyPort"
 TAB_DEDUP_PARAM = "p"
 
 # WebSocket server binding
-WS_HOST = "localhost"
+WEBSOCKET_HOST = "localhost"
 IPV4_LOOPBACK = "127.0.0.1"
 PORT_BIND_ATTEMPTS = 5
 
@@ -53,9 +53,15 @@ PROCESS_REGISTRY_STORE = "servers"  # storage.py store of running WebSocket serv
 
 # Server and logging
 SERVER_NAME = "CoolColabMCP"
-LOGGER_NAME = "cool-colab-mcp"
 LOG_FILE_PREFIX = "cool-colab-mcp"
 LOG_DIR_PREFIX = "cool-colab-mcp-logs-"
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+LOG_FILE_TIMESTAMP = "%Y-%m-%d_%H-%M-%S"
+
+# Doctor
+DIST_NAME = "cool-colab-mcp"
+MIN_PYTHON = (3, 13)
 
 # Notebook tools exposed by the Colab frontend, proxied per session
 ADD_CODE_CELL = "add_code_cell"
