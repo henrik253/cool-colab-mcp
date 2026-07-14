@@ -1,7 +1,7 @@
 [project]
-name = "colab-mcp"
+name = "cool-colab-mcp"
 version = "1.0.1"
-description = "An MCP server for Colab"
+description = "Cool Colab MCP — an MCP server that turns Google Colab notebooks into persistent, multi-session workspaces for AI agents"
 readme = "README.md"
 authors = [
     { name = "Tyler Pirtle", email = "rtp@google.com" },
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-colab-mcp = "colab_mcp:main"
+cool-colab-mcp = "cool_colab_mcp:main"
 
 [build-system]
 requires = ["hatchling"]

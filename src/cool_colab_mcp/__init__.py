@@ -12,25 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Cool Colab MCP — persistent, multi-notebook Colab workspaces for AI agents."""
+
 import argparse
 import asyncio
 import datetime
 import logging
-import tempfile
 import sys
+import tempfile
 
-from fastmcp import FastMCP
 from fastmcp.utilities import logging as fastmcp_logger
 
-from colab_mcp.session import ColabSessionProxy
+from cool_colab_mcp.constants import LOG_DIR_PREFIX, LOG_FILE_PREFIX, LOGGER_NAME
+from cool_colab_mcp.server import build_server
+from cool_colab_mcp.sessions.manager import SessionManager
 
 
-mcp = FastMCP(name="ColabMCP")
-
-
-def init_logger(logdir):
+def init_logger(logdir: str) -> None:
     log_filename = datetime.datetime.now().strftime(
-        f"{logdir}/colab-mcp.%Y-%m-%d_%H-%M-%S.log"
+        f"{logdir}/{LOG_FILE_PREFIX}.%Y-%m-%d_%H-%M-%S.log"
     )
     logging.basicConfig(
         format="%(asctime)s %(levelname)s:%(message)s",
@@ -38,49 +38,36 @@ def init_logger(logdir):
         filename=log_filename,
         level=logging.INFO,  # Set the minimum logging level to capture
     )
-    fastmcp_logger.get_logger("colab-mcp").info("logging to %s" % log_filename)
+    fastmcp_logger.get_logger(LOGGER_NAME).info("logging to %s", log_filename)
 
 
-def parse_args(v):
+def parse_args(v: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="ColabMCP is an MCP server that lets you interact with Colab."
+        description=(
+            "Cool Colab MCP is an MCP server that turns Google Colab notebooks "
+            "into persistent, multi-session workspaces."
+        )
     )
     parser.add_argument(
         "-l",
         "--log",
-        help="if set, use this directory as a location for logfiles (if unset, will log to %s/colab-mcp-logs/)"
-        % tempfile.gettempdir(),
+        help="if set, use this directory as a location for logfiles (if unset, "
+        f"will log to {tempfile.gettempdir()}/{LOG_DIR_PREFIX}*/)",
         action="store",
-        default=tempfile.mkdtemp(prefix="colab-mcp-logs-"),
-    )
-    parser.add_argument(
-        "-p",
-        "--enable-proxy",
-        help="if set, enable the runtime proxy (enabled by default).",
-        action="store_true",
-        default=True,
+        default=tempfile.mkdtemp(prefix=LOG_DIR_PREFIX),
     )
     return parser.parse_args(v)
 
 
-async def main_async():
+async def main_async() -> None:
     args = parse_args(sys.argv[1:])
     init_logger(args.log)
 
-    if args.enable_proxy:
-        logging.info("enabling session proxy tools")
-        session_mcp = ColabSessionProxy()
-        await session_mcp.start_proxy_server()
-        mcp.mount(session_mcp.proxy_server)
-        for middleware in session_mcp.middleware:
-            mcp.add_middleware(middleware)
-
+    manager = SessionManager()
     try:
-        await mcp.run_async()
-
+        await build_server(manager).run_async()
     finally:
-        if args.enable_proxy:
-            await session_mcp.cleanup()
+        await manager.aclose()
 
 
 def main() -> None:

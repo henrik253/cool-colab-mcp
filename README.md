@@ -67,7 +67,7 @@ Cursor, ...).
   "mcpServers": {
     "cool-colab-mcp": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/cool-colab-mcp", "colab-mcp"],
+      "args": ["run", "--directory", "/path/to/cool-colab-mcp", "cool-colab-mcp"],
       "timeout": 30000
     }
   }
