@@ -27,10 +27,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 from websockets.typing import Subprotocol
 
-
-COLAB = "https://colab.research.google.com"
-COLAB_ALT_DOMAIN = "https://colab.google.com"
-SCRATCH_PATH = "/notebooks/empty.ipynb"
+from colab_mcp.constants import COLAB, COLAB_ALT_DOMAIN
 
 
 class ColabWebSocketServer:

@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-repos:
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  # Ruff version.
-  rev: v0.14.3
-  hooks:
-    # Run the linter.
-    - id: ruff-check
-    # Run the formatter.
-    - id: ruff-format
+"""All constants, URLs, and paths used across the package."""
 
-# The full pytest suite runs in CI on every PR (.github/workflows/ci.yml),
-# not on every local commit.
+COLAB = "https://colab.research.google.com"
+COLAB_ALT_DOMAIN = "https://colab.google.com"
+SCRATCH_PATH = "/notebooks/empty.ipynb"
+
+UI_CONNECTION_TIMEOUT = 60.0  # secs
+
+FE_CONNECTED_KEY = "fe_connected"
+PROXY_TOKEN_KEY = "proxy_token"
+PROXY_PORT_KEY = "proxy_port"
+INJECTED_TOOL_NAME = "open_colab_browser_connection"
