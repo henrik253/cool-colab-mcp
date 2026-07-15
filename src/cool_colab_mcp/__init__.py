@@ -19,6 +19,7 @@ import asyncio
 import datetime
 import sys
 import tempfile
+from pathlib import Path
 
 from cool_colab_mcp import doctor, process_registry
 from cool_colab_mcp.constants import LOG_DIR_PREFIX
@@ -33,6 +34,11 @@ def parse_args(v: list[str]) -> argparse.Namespace:
             "Cool Colab MCP is an MCP server that turns Google Colab notebooks "
             "into persistent, multi-session workspaces."
         )
+    )
+    parser.add_argument(
+        "--client-oauth-config",
+        type=Path,
+        help="OAuth Desktop-app client-secrets JSON for runtime switching",
     )
     parser.add_argument(
         "-l",
@@ -102,7 +108,7 @@ async def main_async(args: argparse.Namespace | None = None) -> None:
     process_registry.prune_dead()
     manager = SessionManager()
     try:
-        await build_server(manager).run_async()
+        await build_server(manager, args.client_oauth_config).run_async()
     finally:
         await manager.aclose()
 

@@ -23,8 +23,8 @@ today only the merged skeleton shows checks. In-flight branches and their exact 
 | Notebook registry | 5 | — | ✅ **Merged** to `integration` (PR #5, `e0d0657`) |
 | Persistent auth | 9 | — | ✅ **Merged** to `integration` (PR #6, `b6468db`) |
 | Snapshots | 8 | — | ✅ **Merged** to `integration` (PR #7, `da81a35`) |
-| Direct file upload | 10 | `feature/file-upload` | 🟡 Plan-review approved; rebased gates green — PR pending |
-| Runtime control | 11 | `feature/runtime-control` | 🟡 Final review fixes in progress |
+| Direct file upload | 10 | — | ✅ **Merged** to `integration` (PR #8, `129ac72`) |
+| Runtime control | 11 | `feature/runtime-control` | 🟡 Plan-review approved; rebased gates green — PR pending |
 
 None of the remaining 🟡 branches have a PR yet. Resuming means: finish each branch's review fixes →
 squash → push → PR into `integration` → CI green → squash-merge (one at a time), then launch
@@ -366,11 +366,34 @@ exception chains)
 
 ## 11. Runtime status, profiles, and API-based switching (plan.md §8)
 
-- [ ] Tools: `get_runtime_status`, `connect_runtime`, `disconnect_runtime`, `stop_runtime`, `restart_runtime`, `request_runtime_profile`
-- [ ] CPU/GPU switching via the OAuth runtime API (`colab.pa.googleapis.com`), incl. quota/denial outcomes as structured results
+- [x] Tools: `get_runtime_status`, `connect_runtime`, `disconnect_runtime`, `stop_runtime`, `restart_runtime`, `request_runtime_profile`
+- [x] CPU/GPU switching via the OAuth runtime API (`colab.pa.googleapis.com`), incl. quota/denial outcomes as structured results
 - [ ] Pre-stop save/snapshot/manifest sequence; post-connect verify/restore sequence
 
-**Tests:** —
+Phase-1 boundary: destructive tools require caller-confirmed external notebook/snapshot/log/
+checkpoint preservation, generate the environment manifest through `NotebookSession.run_code`,
+and release only an explicitly selected assignment endpoint. `connect_runtime` verifies actual
+hardware. Automatic save/snapshot/bootstrap/checkpoint orchestration remains Phase 2 (§14).
+
+Runtime-control coverage in `runtime_client_test.py`
+(`test_list_assignments_strips_xssi`, `test_quota_denial_is_structured`,
+`test_future_quota_denial_is_structured`, `test_auth_denial_is_actionable_without_body_leak`,
+`test_403_recognized_policy_outcome_is_preserved`,
+`test_invalid_assignment_is_protocol_error`,
+`test_transport_error_does_not_leak_credentials`, `test_unassign_uses_server_token`,
+`test_empty_unassign_endpoint_is_invalid_input`) and
+`runtime_tools_test.py` (`test_status_without_session_returns_structured_error`,
+`test_status_uses_shared_run_code`, `test_connect_runtime_verifies_hardware`,
+`test_status_backend_failure_is_structured`, `test_every_runtime_tool_rejects_bad_notebook`,
+`test_profile_preserves_then_switches`, `test_profile_sequence_is_manifest_release_assign`,
+`test_unknown_profile_is_invalid_input`, `test_switch_without_oauth_is_actionable`,
+`test_switch_requires_preservation_confirmation`,
+`test_stop_without_mapping_releases_nothing`, `test_stop_releases_only_selected_assignment`,
+`test_restart_rejects_unknown_accelerator`, `test_restart_switches_only_selected_assignment`,
+`test_api_backend_failure_is_structured`, `test_disconnect_closes_only_local_session`,
+`test_disconnect_backend_failure_is_structured`). The section stays unchecked until this branch
+merges into `integration`; full automatic snapshot/bootstrap/checkpoint orchestration remains
+Phase 2 (§14).
 
 ---
 

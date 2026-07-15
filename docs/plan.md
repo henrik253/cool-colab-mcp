@@ -317,6 +317,11 @@ Before stopping a runtime, the system should:
 3. save selected logs and checkpoints;
 4. store the environment reconstruction manifest.
 
+In Phase 1, the tool generates the environment manifest but requires the caller to
+confirm that the notebook, snapshot, selected logs, and checkpoints were preserved
+externally before any destructive API request. It never claims to have saved those
+artifacts itself. Automated snapshot/save orchestration is Phase 2 (section 12).
+
 After a new runtime connects, the system should:
 
 1. verify the actual hardware;
@@ -324,6 +329,9 @@ After a new runtime connects, the system should:
 3. restore project files;
 4. restore the latest checkpoint;
 5. report whether the requested profile was satisfied.
+
+In Phase 1, `connect_runtime` verifies and reports actual hardware. Automated dependency,
+project-file, and checkpoint restoration is Phase 2 (section 12).
 
 ### Implementation
 

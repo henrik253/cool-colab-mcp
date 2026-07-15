@@ -61,6 +61,13 @@ ALL_TOOLS = {
     "get_upload_status",
     "cancel_upload",
     "list_runtime_files",
+    # runtime tools (runtime_tools_test.py)
+    "get_runtime_status",
+    "connect_runtime",
+    "disconnect_runtime",
+    "stop_runtime",
+    "restart_runtime",
+    "request_runtime_profile",
 }
 
 NOTEBOOK_TOOL_CALLS = [
