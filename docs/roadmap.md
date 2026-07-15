@@ -20,8 +20,8 @@ today only the merged skeleton shows checks. In-flight branches and their exact 
 | Architecture skeleton | 0/2/3/6/7 | — | ✅ **Merged** to `integration` (PR #2, `14fdbbc`) |
 | Upstream reliability fixes | 2 | — | ✅ **Merged** to `integration` (PR #3, `3b30d3b`) |
 | Structured logging + doctor | 4 | — | ✅ **Merged** to `integration` (PR #4, `3537363`) |
-| Notebook registry | 5 | `feature/notebook-registry` | 🟡 Concurrency review fix applied; gates green — final re-review pending |
-| Persistent auth | 9 | `feature/persistent-auth` | 🟡 Committed (`2a61e9c`), reviewed → **REQUEST CHANGES** (1 blocking: broaden refresh exception catch; 2 minor); fixes not yet applied |
+| Notebook registry | 5 | — | ✅ **Merged** to `integration` (PR #5, `e0d0657`) |
+| Persistent auth | 9 | `feature/persistent-auth` | 🟡 Security review fixes applied; rebased onto `integration`; gates green — final re-review pending |
 | Snapshots / uploads / runtime | 8/10/11 | — | ⬜ **Wave 2 — not started** |
 
 None of the remaining 🟡 branches have a PR yet. Resuming means: finish each branch's review fixes →
@@ -268,12 +268,40 @@ over every instrumented module), `TestNamespacedLoggers::test_registry_failure_u
 
 ## 9. Persistent authentication (plan.md §3)
 
-- [ ] Persistent Chromium profile for the Google/Colab session
-- [ ] Credentials in OS keyring / encrypted storage, never exposed to agents
-- [ ] Runtime-API OAuth token in keyring (hardened vs. reference fork's plaintext JSON)
-- [ ] Expired auth → structured `user_action_required`
+- [ ] Persistent Chromium profile for the Google/Colab session — groundwork only:
+      profile-directory constant (`BROWSER_PROFILE_DIR_NAME` under the base dir) and
+      gitignore entry landed here; actual Chromium profile management is Phase 2 (§12)
+- [x] Credentials in OS keyring / encrypted storage, never exposed to agents (`auth/manager.py`)
+- [x] Runtime-API OAuth token in keyring (hardened vs. reference fork's plaintext JSON);
+      `ensure_credentials` + `run_consent_flow` in `auth/oauth.py` — scopes and the
+      port-8085 consent callback ported from SebastianGilPinzon/colab-mcp (Apache 2.0)
+- [x] Expired auth → structured `user_action_required` (missing config, missing token,
+      failed refresh/transport, no refresh token, unavailable keyring, malformed config,
+      declined consent — all with actionable messages)
 
-**Tests:** —
+**Tests:** `auth_manager_test.py` (keyring store; named `auth_manager_test.py` because
+`manager_test.py` is taken by the session manager):
+`test_roundtrip_preserves_token_and_refresh_token`,
+`test_token_lives_under_the_configured_service_and_account`,
+`test_load_without_stored_token_returns_none`, `test_load_with_corrupt_entry_returns_none`,
+`test_load_with_incomplete_entry_returns_none`, `test_delete_removes_the_token`,
+`test_delete_without_stored_token_is_a_noop`,
+`test_missing_keyring_backend_requires_user_action` (parametrized over store/load/delete);
+`oauth_test.py::TestEnsureCredentials`
+(`test_valid_cached_token_is_returned`, `test_expired_token_is_refreshed_and_persisted`,
+`test_missing_token_requires_consent`, `test_missing_token_and_config_names_the_config_path`,
+`test_failed_refresh_requires_consent_and_clears_the_token`,
+`test_expired_token_without_refresh_token_requires_consent`),
+`oauth_test.py::TestRunConsentFlow` (`test_consent_stores_the_token`,
+`test_consent_uses_the_reference_fork_port`, `test_missing_config_requires_user_action`,
+`test_malformed_config_requires_user_action`,
+`test_declined_consent_requires_user_action_and_stores_nothing`),
+`oauth_test.py::TestNoTokenLeakage` (`test_happy_path_logs_no_token`,
+`test_leaky_refresh_error_is_not_propagated`,
+`test_leaky_transport_error_is_not_propagated`,
+`test_leaky_consent_error_is_not_propagated`
+— a sentinel token value must never appear in log records, error messages, details, or
+exception chains)
 
 ## 10. Direct file upload (plan.md §7)
 

@@ -52,6 +52,23 @@ STORAGE_LOCK_SUFFIX = ".lock"
 PROCESS_REGISTRY_STORE = "servers"  # storage.py store of running WebSocket servers
 REGISTRY_STORE = "registry"  # storage.py store holding the notebook registry
 
+# Authentication (plan.md §3). Scopes and the fixed OAuth callback port are taken
+# from the reference fork SebastianGilPinzon/colab-mcp (Apache 2.0), src/colab_mcp/auth.py;
+# the fixed port 8085 is its fix for the OAuth redirect-URI mismatch on ephemeral ports.
+OAUTH_SCOPES = (
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/colaboratory",
+    "openid",
+)
+OAUTH_LOCAL_SERVER_PORT = 8085
+KEYRING_SERVICE = "cool-colab-mcp"
+KEYRING_TOKEN_ACCOUNT = "google-oauth-token"
+
+# Persistent browser profile directory under the base dir (storage.base_dir()).
+# Phase 1 groundwork only; Chromium profile management lands in Phase 2 (plan.md §10).
+BROWSER_PROFILE_DIR_NAME = "browser-profile"
+
 # Server and logging
 SERVER_NAME = "CoolColabMCP"
 LOG_FILE_PREFIX = "cool-colab-mcp"
