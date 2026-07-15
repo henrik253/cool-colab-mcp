@@ -48,6 +48,7 @@ from cool_colab_mcp.registry.tools import register_registry_tools
 from cool_colab_mcp.sessions.manager import SessionManager
 from cool_colab_mcp.sessions.session import NotebookSession, validate_notebook_url
 from cool_colab_mcp.snapshots.tools import register_snapshot_tools
+from cool_colab_mcp.transfer_tools import register_transfer_tools
 from cool_colab_mcp.utils import json_tool_result
 
 logger = logging.getLogger(__name__)
@@ -260,5 +261,6 @@ def build_server(manager: SessionManager) -> FastMCP:
 
     register_registry_tools(mcp, manager, open_connection)
     register_snapshot_tools(mcp, manager)
+    register_transfer_tools(mcp, manager)
 
     return mcp

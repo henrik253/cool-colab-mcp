@@ -55,6 +55,12 @@ ALL_TOOLS = {
     "list_snapshots",
     "restore_snapshot",
     "export_notebook",
+    # direct transfer tools (transfer_tools_test.py)
+    "upload_file",
+    "upload_directory",
+    "get_upload_status",
+    "cancel_upload",
+    "list_runtime_files",
 }
 
 NOTEBOOK_TOOL_CALLS = [
