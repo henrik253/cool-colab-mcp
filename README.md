@@ -82,6 +82,10 @@ uv run pytest                # run tests
 uv run pre-commit install    # once per clone
 ```
 
+To exercise three simultaneous notebooks, persistent OAuth, CPU/T4 runtime control, and
+verified uploads before deployment, follow the
+[three-notebook live demo](docs/three-notebook-demo.md).
+
 ## Status
 
 Early development — Phase 1 (registry, multi-session, snapshots, uploads, runtime control)

@@ -26,9 +26,11 @@ All Phase 1 feature branches and the integration refactor sweep are complete.
 | Direct file upload | 10 | — | ✅ **Merged** to `integration` (PR #8, `129ac72`) |
 | Runtime control | 11 | — | ✅ **Merged** to `integration` (PR #9, `b809019`) |
 | Integration refactor | — | `integration` | ✅ Combined `main...integration` sweep complete |
+| Three-notebook live demo | manual verification | `feature/three-notebook-demo` | 🟡 Harness complete; live Colab URLs/OAuth input required |
 
-Next: finish the behavior-preserving integration refactor sweep, verify the full suite, then open
-the single `integration` → `main` PR for review.
+Final integration PR #10 is open with green CI. Before merging it, run the three-notebook live
+demo to exercise the real multi-session/auth/runtime/upload path. Section 1 remains open until
+its separate cell-response and complete manual-setup checks are also finished.
 
 ---
 
@@ -62,7 +64,17 @@ parallel branches and must share one persistence implementation. Covered by
       parsing (`CELL_ID_KEYS` in constants.py) to the single verified key
 - [ ] Document the manual setup steps in README.md
 
-**Tests:** existing `session_test.py`, `websocket_server_test.py` pass
+**Tests:** existing `session_test.py`, `websocket_server_test.py` pass. The live-demo harness is
+covered offline by `demo_test.py` (`test_plan_has_two_cpu_one_t4_and_isolated_upload_destinations`,
+`test_plan_requires_three_unique_notebooks`, `test_plan_requires_two_cpu_and_one_t4`,
+`test_plan_rejects_placeholder_url`,
+`test_register_and_open_routes_three_notebooks_concurrently`,
+`test_configure_requires_every_assignment_endpoint`,
+`test_configure_routes_explicit_endpoints_and_profiles`,
+`test_verify_upload_accepts_two_cpu_and_one_t4`,
+`test_verify_upload_rejects_wrong_hardware` (CPU and T4 mismatch cases),
+`test_verify_upload_rejects_unverified_upload`,
+`test_structured_tool_failure_stops_demo_safely`)
 
 ## 2. Upstream reliability fixes (plan.md Phase 1 Baseline)
 

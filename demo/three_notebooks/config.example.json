@@ -1,0 +1,26 @@
+{
+  "oauth_config_path": "/absolute/path/to/google-oauth-desktop-client.json",
+  "notebooks": [
+    {
+      "notebook_id": "demo-cpu-a",
+      "name": "Demo CPU A",
+      "url": "https://colab.research.google.com/drive/REPLACE_WITH_FILE_ID_1",
+      "runtime_profile": "prototype-cpu",
+      "assignment_endpoint": null
+    },
+    {
+      "notebook_id": "demo-cpu-b",
+      "name": "Demo CPU B",
+      "url": "https://colab.research.google.com/drive/REPLACE_WITH_FILE_ID_2",
+      "runtime_profile": "prototype-cpu",
+      "assignment_endpoint": null
+    },
+    {
+      "notebook_id": "demo-t4",
+      "name": "Demo T4 GPU",
+      "url": "https://colab.research.google.com/drive/REPLACE_WITH_FILE_ID_3",
+      "runtime_profile": "debug-gpu",
+      "assignment_endpoint": null
+    }
+  ]
+}

@@ -109,6 +109,25 @@ p = pathlib.Path('/content/cool-colab-runtime-manifest.json')
 p.write_text(json.dumps({'python': sys.version, 'packages': subprocess.check_output([sys.executable, '-m', 'pip', 'freeze'], text=True).splitlines()}))
 print(str(p))"""
 
+# Three-notebook live verification demo
+DEMO_NOTEBOOK_COUNT = 3
+DEMO_CPU_PROFILE = "prototype-cpu"
+DEMO_GPU_PROFILE = "debug-gpu"
+DEMO_CPU_COUNT = 2
+DEMO_GPU_COUNT = 1
+DEMO_PLACEHOLDER_MARKER = "REPLACE_WITH"
+DEMO_RUNTIME_DIR = f"{RUNTIME_ROOT}/cool-colab-demo"
+DEMO_UPLOAD_FILENAME = "test-upload.txt"
+DEMO_COMMANDS = (
+    "plan",
+    "auth",
+    "auth-check",
+    "prepare",
+    "assignments",
+    "configure",
+    "verify-upload",
+)
+
 # Server and logging
 SERVER_NAME = "CoolColabMCP"
 LOG_FILE_PREFIX = "cool-colab-mcp"

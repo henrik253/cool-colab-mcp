@@ -1,0 +1,2 @@
+Cool Colab MCP three-notebook demo upload.
+This same file was transferred independently to two CPU runtimes and one T4 GPU runtime.
