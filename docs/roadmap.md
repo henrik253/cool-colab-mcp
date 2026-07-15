@@ -10,6 +10,24 @@ implemented together on one branch: `feature/architecture-skeleton`.
 
 Status legend: `[ ]` open · `[x]` done
 
+## Wave status (snapshot 2026-07-14)
+
+Per-section bullets below are checked only once their branch **merges into `integration`**, so
+today only the merged skeleton shows checks. In-flight branches and their exact state:
+
+| Feature | Section | Branch | State |
+|---|---|---|---|
+| Architecture skeleton | 0/2/3/6/7 | — | ✅ **Merged** to `integration` (PR #2, `14fdbbc`) |
+| Upstream reliability fixes | 2 | `feature/reliability-fixes` | 🟡 Code complete, gates green — **uncommitted** in worktree; interrupted before commit/review |
+| Structured logging + doctor | 4 | `feature/logging-doctor` | 🟡 Committed (`da48f78`), reviewed → **REQUEST CHANGES** (2 minor: URL-logging wording, single-source `WEBSOCKET_HOST`); fixes not yet applied |
+| Notebook registry | 5 | `feature/notebook-registry` | 🟡 Committed (`55c1991`), reviewed → **REQUEST CHANGES** (4 findings); fixes **partially applied** (records.py/tools.py done; 2 record-level tests not yet added) |
+| Persistent auth | 9 | `feature/persistent-auth` | 🟡 Committed (`2a61e9c`), reviewed → **REQUEST CHANGES** (1 blocking: broaden refresh exception catch; 2 minor); fixes not yet applied |
+| Snapshots / uploads / runtime | 8/10/11 | — | ⬜ **Wave 2 — not started** |
+
+None of the 🟡 branches have a PR yet. Resuming means: finish each branch's review fixes →
+squash → push → PR into `integration` → CI green → squash-merge (one at a time), then launch
+Wave 2, then the integration refactor sweep before `integration` → `main`.
+
 ---
 
 ## 0. Project bootstrap
