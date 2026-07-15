@@ -22,6 +22,7 @@ invisible tool, never a silent stub.
 
 import logging
 import webbrowser
+from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
@@ -45,6 +46,7 @@ from cool_colab_mcp.constants import (
 )
 from cool_colab_mcp.errors import ToolFailed, fail
 from cool_colab_mcp.registry.tools import register_registry_tools
+from cool_colab_mcp.runtime.tools import register_runtime_tools
 from cool_colab_mcp.sessions.manager import SessionManager
 from cool_colab_mcp.sessions.session import NotebookSession, validate_notebook_url
 from cool_colab_mcp.snapshots.tools import register_snapshot_tools
@@ -133,7 +135,9 @@ async def open_connection(
     return _status(session, connected=connected, url=url)
 
 
-def build_server(manager: SessionManager) -> FastMCP:
+def build_server(
+    manager: SessionManager, oauth_config_path: Path | None = None
+) -> FastMCP:
     """Create the root server and pre-register the whole tool surface."""
     mcp = FastMCP(
         name=SERVER_NAME,
@@ -262,5 +266,6 @@ def build_server(manager: SessionManager) -> FastMCP:
     register_registry_tools(mcp, manager, open_connection)
     register_snapshot_tools(mcp, manager)
     register_transfer_tools(mcp, manager)
+    register_runtime_tools(mcp, manager, oauth_config_path)
 
     return mcp

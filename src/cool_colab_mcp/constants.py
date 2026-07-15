@@ -79,6 +79,36 @@ KEYRING_TOKEN_ACCOUNT = "google-oauth-token"
 # Phase 1 groundwork only; Chromium profile management lands in Phase 2 (plan.md §10).
 BROWSER_PROFILE_DIR_NAME = "browser-profile"
 
+# Colab runtime API (ported from SebastianGilPinzon/colab-mcp, Apache 2.0).
+COLAB_RUNTIME_API = "https://colab.pa.googleapis.com"
+RUNTIME_ASSIGN_PATH = "/tun/m/assign"
+RUNTIME_ASSIGNMENTS_PATH = "/tun/m/assignments"
+RUNTIME_UNASSIGN_PATH_PREFIX = "/tun/m/unassign/"
+COLAB_CLIENT_AGENT = "python-colab-client"
+XSSI_PREFIX = ")]}'\n"
+RUNTIME_PROFILES = {
+    "prototype-cpu": "NONE",
+    "debug-gpu": "T4",
+    "training-gpu": "L4",
+}
+RUNTIME_ACCELERATORS = ("NONE", "T4", "L4", "A100", "V2-8", "V5E-1", "V6E-1")
+RUNTIME_DENIAL_OUTCOMES = (
+    "DENYLISTED",
+    "QUOTA_DENIED_REQUESTED_VARIANTS",
+    "QUOTA_EXCEEDED_USAGE_TIME",
+)
+RUNTIME_STATUS_CODE = """import json, platform
+try:
+ import torch
+ gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
+except Exception:
+ gpu = None
+print(json.dumps({'connected': True, 'accelerator': gpu or 'CPU', 'python': platform.python_version()}))"""
+RUNTIME_MANIFEST_CODE = """import json, pathlib, subprocess, sys
+p = pathlib.Path('/content/cool-colab-runtime-manifest.json')
+p.write_text(json.dumps({'python': sys.version, 'packages': subprocess.check_output([sys.executable, '-m', 'pip', 'freeze'], text=True).splitlines()}))
+print(str(p))"""
+
 # Server and logging
 SERVER_NAME = "CoolColabMCP"
 LOG_FILE_PREFIX = "cool-colab-mcp"
