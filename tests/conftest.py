@@ -22,6 +22,15 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from mcp.types import TextContent
 
+from cool_colab_mcp.constants import HOME_ENV
+
+
+@pytest.fixture(autouse=True)
+def isolated_home(tmp_path, monkeypatch):
+    """Keep every test away from the user's real ~/.cool-colab-mcp state."""
+    monkeypatch.setenv(HOME_ENV, str(tmp_path))
+    return tmp_path
+
 
 class MockColabWebSocketServer:
     def __init__(self):

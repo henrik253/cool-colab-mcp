@@ -42,7 +42,7 @@ from cool_colab_mcp.constants import (
     SCRATCH_PATH,
     UI_CONNECTION_TIMEOUT,
 )
-from cool_colab_mcp.errors import fail
+from cool_colab_mcp.errors import ToolFailed, fail
 from cool_colab_mcp.sessions.websocket_server import ColabWebSocketServer
 
 
@@ -210,9 +210,25 @@ class NotebookSession:
                 notebook_id=self.notebook_id,
             )
         assert self.proxy_client is not None
-        return await self.proxy_client.call_tool(
-            name, {k: v for k, v in args.items() if v is not None}
-        )
+        try:
+            return await self.proxy_client.call_tool(
+                name, {k: v for k, v in args.items() if v is not None}
+            )
+        except ToolFailed:
+            raise
+        except Exception as exc:
+            # A WebSocket drop mid-call surfaces as an unstructured exception
+            # from the read stream; translate it into the not_connected
+            # contract. Errors while the connection is still live are real
+            # bugs and propagate unchanged.
+            if self.is_connected():
+                raise
+            raise fail(
+                "not_connected",
+                f"Connection to notebook '{self.notebook_id}' was lost during "
+                f"'{name}' — call open_colab_browser_connection to reconnect.",
+                notebook_id=self.notebook_id,
+            ) from exc
 
 
 def _text_of(result: CallToolResult) -> str:

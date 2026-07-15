@@ -23,6 +23,7 @@ import tempfile
 
 from fastmcp.utilities import logging as fastmcp_logger
 
+from cool_colab_mcp import process_registry
 from cool_colab_mcp.constants import LOG_DIR_PREFIX, LOG_FILE_PREFIX, LOGGER_NAME
 from cool_colab_mcp.server import build_server
 from cool_colab_mcp.sessions.manager import SessionManager
@@ -56,12 +57,54 @@ def parse_args(v: list[str]) -> argparse.Namespace:
         action="store",
         default=tempfile.mkdtemp(prefix=LOG_DIR_PREFIX),
     )
+    parser.add_argument(
+        "--list-running",
+        help="list running cool-colab-mcp servers from the process registry and exit",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--kill-stale",
+        help="terminate cool-colab-mcp servers left over from other processes "
+        "and exit (fixes stale browser tabs pointing at dead ports)",
+        action="store_true",
+    )
     return parser.parse_args(v)
+
+
+def print_running() -> None:
+    entries = process_registry.list_running()
+    if not entries:
+        print("No running cool-colab-mcp servers registered.")
+        return
+    for entry in entries:
+        started = datetime.datetime.fromtimestamp(entry.started_at).isoformat(
+            sep=" ", timespec="seconds"
+        )
+        print(f"pid={entry.pid} port={entry.port} host={entry.host} started={started}")
+
+
+def kill_stale() -> None:
+    removed = process_registry.kill_stale()
+    if not removed:
+        print("No stale cool-colab-mcp servers found.")
+        return
+    for entry in removed:
+        print(f"removed pid={entry.pid} port={entry.port}")
 
 
 async def main_async() -> None:
     args = parse_args(sys.argv[1:])
     init_logger(args.log)
+
+    if args.list_running:
+        print_running()
+        return
+    if args.kill_stale:
+        kill_stale()
+        return
+
+    # Entries from crashed runs would otherwise accumulate forever.
+    process_registry.prune_dead()
 
     manager = SessionManager()
     try:

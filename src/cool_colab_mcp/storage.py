@@ -21,7 +21,14 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from cool_colab_mcp.constants import DEFAULT_HOME_DIR, HOME_ENV, STORAGE_SUFFIX
+from filelock import FileLock
+
+from cool_colab_mcp.constants import (
+    DEFAULT_HOME_DIR,
+    HOME_ENV,
+    STORAGE_LOCK_SUFFIX,
+    STORAGE_SUFFIX,
+)
 
 
 def base_dir() -> Path:
@@ -32,6 +39,11 @@ def base_dir() -> Path:
 
 def _path(name: str) -> Path:
     return base_dir() / f"{name}{STORAGE_SUFFIX}"
+
+
+def lock(name: str) -> FileLock:
+    """Inter-process lock for an atomic read-modify-write store transaction."""
+    return FileLock(base_dir() / f"{name}{STORAGE_LOCK_SUFFIX}")
 
 
 def load(name: str) -> dict[str, Any]:
