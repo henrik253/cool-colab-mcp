@@ -44,6 +44,11 @@ DEFAULT_NOTEBOOK_ID = "default"
 # Environment variables
 NOTEBOOK_URL_ENV = "COLAB_MCP_NOTEBOOK_URL"  # legacy notebook pin (headless callers)
 HOME_ENV = "COOL_COLAB_MCP_HOME"
+UPLOAD_DIRS_ENV = "COOL_COLAB_MCP_UPLOAD_DIRS"
+
+# Direct runtime file transfer
+RUNTIME_ROOT = "/content"
+UPLOAD_CHUNK_SIZE = 256 * 1024
 
 # Persistent local storage
 DEFAULT_HOME_DIR = "~/.cool-colab-mcp"

@@ -22,8 +22,9 @@ today only the merged skeleton shows checks. In-flight branches and their exact 
 | Structured logging + doctor | 4 | — | ✅ **Merged** to `integration` (PR #4, `3537363`) |
 | Notebook registry | 5 | — | ✅ **Merged** to `integration` (PR #5, `e0d0657`) |
 | Persistent auth | 9 | — | ✅ **Merged** to `integration` (PR #6, `b6468db`) |
-| Snapshots | 8 | `feature/snapshots` | 🟡 Plan-review approved; gates green — PR pending |
-| Uploads / runtime | 10/11 | `feature/file-upload`, `feature/runtime-control` | 🟡 Wave 2 in progress |
+| Snapshots | 8 | — | ✅ **Merged** to `integration` (PR #7, `da81a35`) |
+| Direct file upload | 10 | `feature/file-upload` | 🟡 Plan-review approved; rebased gates green — PR pending |
+| Runtime control | 11 | `feature/runtime-control` | 🟡 Final review fixes in progress |
 
 None of the remaining 🟡 branches have a PR yet. Resuming means: finish each branch's review fixes →
 squash → push → PR into `integration` → CI green → squash-merge (one at a time), then launch
@@ -335,12 +336,33 @@ exception chains)
 
 ## 10. Direct file upload (plan.md §7)
 
-- [ ] Chunked transfer via notebook code execution, reassembled under `/content`
-- [ ] SHA-256 + size verification; cleanup of incomplete uploads
-- [ ] Tools: `upload_file`, `upload_directory`, `get_upload_status`, `cancel_upload`, `list_runtime_files`
-- [ ] Host file access restricted to configured directories
+- [x] Chunked transfer via notebook code execution, reassembled under `/content`
+- [x] SHA-256 + size verification; cleanup of incomplete uploads
+- [x] Tools: `upload_file`, `upload_directory`, `get_upload_status`, `cancel_upload`, `list_runtime_files`
+- [x] Host file access restricted to configured directories
 
-**Tests:** —
+**Tests:** `transfers_test.py` (`TestUploadFile::test_chunks_and_verifies_file`,
+`test_verification_failure_cleans_incomplete_file`,
+`test_transfer_failure_cleans_incomplete_file`, `test_cleanup_failure_is_reported_honestly`,
+`test_cancelled_upload_is_cleaned`, `test_duplicate_caller_supplied_upload_id_rejected`,
+`test_empty_caller_supplied_upload_id_rejected`,
+`test_concurrent_destination_collision_is_rejected`;
+`TestPathRestrictions::test_uploads_disabled_without_configuration`,
+`test_source_outside_allowed_root_rejected`, `test_destination_outside_content_rejected`;
+`TestUploadDirectory::test_recurses_and_preserves_relative_paths`;
+`TestRuntimeFiles::test_lists_runtime_files`, `test_invalid_runtime_response_is_structured`,
+`test_runtime_resolved_path_escape_is_invalid_input` (parametrized over upload/remove/list),
+`test_runtime_code_resolves_paths_beneath_content`;
+`TestStatus::test_unknown_upload_id_rejected`), `transfer_tools_test.py`
+(`TestToolSurface::test_transfer_tools_are_pre_registered`,
+`test_session_tools_return_not_connected` (parametrized);
+`TestUploadFileTool::test_uploads_and_returns_status`,
+`test_bad_host_path_returns_structured_error`, `test_failure_is_structured`,
+`test_routes_to_named_notebook`; `TestUploadDirectoryTool::test_happy_path`,
+`test_file_source_is_invalid`, `test_child_failure_is_structured_and_routes`;
+`TestStatusAndCancelTools::test_active_status_and_cancel_happy_path`,
+`test_unknown_id_is_invalid` (parametrized); `TestListRuntimeFilesTool::test_happy_path_routes_to_named_notebook`,
+`test_path_outside_content_is_invalid`, `test_bad_runtime_response_is_structured`)
 
 ## 11. Runtime status, profiles, and API-based switching (plan.md §8)
 
