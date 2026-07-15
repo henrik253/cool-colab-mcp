@@ -43,6 +43,13 @@ ALL_TOOLS = {
     "update_cell",
     "delete_cell",
     "move_cell",
+    # registry tools (registry_tools_test.py)
+    "register_notebook",
+    "list_notebooks",
+    "remove_notebook",
+    "get_notebook_status",
+    "open_notebook",
+    "close_notebook",
 }
 
 NOTEBOOK_TOOL_CALLS = [

@@ -44,11 +44,91 @@ from cool_colab_mcp.constants import (
     UPDATE_CELL,
 )
 from cool_colab_mcp.errors import ToolFailed, fail
+from cool_colab_mcp.registry.tools import register_registry_tools
 from cool_colab_mcp.sessions.manager import SessionManager
 from cool_colab_mcp.sessions.session import NotebookSession, validate_notebook_url
 from cool_colab_mcp.utils import json_tool_result
 
 logger = logging.getLogger(__name__)
+
+
+def _status(session: NotebookSession, connected: bool, url: str | None) -> ToolResult:
+    return json_tool_result(
+        {
+            "connected": connected,
+            "notebook_id": session.notebook_id,
+            "notebook_url": url,
+        }
+    )
+
+
+async def open_connection(
+    manager: SessionManager,
+    notebook_url: str | None,
+    notebook_id: str | None,
+    ctx: Context,
+) -> ToolResult:
+    """The one open flow: resolve the notebook, open the browser tab, await the
+    frontend connection with progress reports. Shared by
+    open_colab_browser_connection and the registry's open_notebook; returns
+    structured errors instead of raising."""
+    try:
+        if notebook_url is not None:
+            validate_notebook_url(notebook_url)
+        session = await manager.get_or_create(notebook_id)
+        if session.is_connected():
+            if notebook_url is not None and notebook_url != session.active_notebook_url:
+                raise fail(
+                    "invalid_input",
+                    f"Notebook '{session.notebook_id}' is already connected — "
+                    "a live session cannot switch notebooks. Use another "
+                    "notebook_id or close this session first.",
+                    notebook_id=session.notebook_id,
+                    active_notebook_url=session.active_notebook_url,
+                    requested_notebook_url=notebook_url,
+                )
+            return _status(session, connected=True, url=session.active_notebook_url)
+        url = session.resolve_notebook_url(notebook_url)
+    except ToolFailed as failure:
+        return failure.error.as_result()
+
+    separator = "&" if "?" in url else "?"
+    logger.info(
+        "Opening notebook session '%s' on port %d",
+        session.notebook_id,
+        session.port,
+    )
+    webbrowser.open_new(
+        f"{url}{separator}{TAB_DEDUP_PARAM}={session.port}"
+        f"#{PROXY_TOKEN_PARAM}={session.token}&{PROXY_PORT_PARAM}={session.port}"
+    )
+    await ctx.report_progress(
+        progress=1, total=3, message=f"Opened Colab notebook: {url}"
+    )
+    await ctx.report_progress(
+        progress=2,
+        total=3,
+        message=(
+            "Waiting for user to connect in Colab - "
+            f"will wait for {UI_CONNECTION_TIMEOUT:.0f}s"
+        ),
+    )
+    connected = await session.await_connection(UI_CONNECTION_TIMEOUT)
+    logger.info(
+        "Session '%s' %s",
+        session.notebook_id,
+        "connected" if connected else "timed out waiting for the browser",
+    )
+    await ctx.report_progress(
+        progress=3,
+        total=3,
+        message=(
+            "The Colab UI is successfully connected!"
+            if connected
+            else "Timeout while waiting for the user to connect."
+        ),
+    )
+    return _status(session, connected=connected, url=url)
 
 
 def build_server(manager: SessionManager) -> FastMCP:
@@ -61,17 +141,6 @@ def build_server(manager: SessionManager) -> FastMCP:
             "to work with several notebooks at once."
         ),
     )
-
-    def _status(
-        session: NotebookSession, connected: bool, url: str | None
-    ) -> ToolResult:
-        return json_tool_result(
-            {
-                "connected": connected,
-                "notebook_id": session.notebook_id,
-                "notebook_url": url,
-            }
-        )
 
     async def _forward(
         name: str, args: dict[str, Any], notebook_id: str | None
@@ -114,70 +183,7 @@ def build_server(manager: SessionManager) -> FastMCP:
 
         Waits up to 60s for the user's browser tab to connect and reports progress.
         """
-        try:
-            if notebook_url is not None:
-                validate_notebook_url(notebook_url)
-            session = await manager.get_or_create(notebook_id)
-            if session.is_connected():
-                if (
-                    notebook_url is not None
-                    and notebook_url != session.active_notebook_url
-                ):
-                    raise fail(
-                        "invalid_input",
-                        f"Notebook '{session.notebook_id}' is already connected — "
-                        "a live session cannot switch notebooks. Use another "
-                        "notebook_id or close this session first.",
-                        notebook_id=session.notebook_id,
-                        active_notebook_url=session.active_notebook_url,
-                        requested_notebook_url=notebook_url,
-                    )
-                return _status(session, connected=True, url=session.active_notebook_url)
-            url = session.resolve_notebook_url(notebook_url)
-        except ToolFailed as failure:
-            return failure.error.as_result()
-
-        # `?p=<port>` makes the URL unique per server so Chrome cannot dedupe
-        # onto a stale tab whose fragment points at a dead server; the
-        # fragment stays the source of truth for the Colab frontend
-        # (fix from SebastianGilPinzon/colab-mcp, Apache 2.0).
-        separator = "&" if "?" in url else "?"
-        logger.info(
-            "Opening notebook session '%s' on port %d",
-            session.notebook_id,
-            session.port,
-        )
-        webbrowser.open_new(
-            f"{url}{separator}{TAB_DEDUP_PARAM}={session.port}"
-            f"#{PROXY_TOKEN_PARAM}={session.token}&{PROXY_PORT_PARAM}={session.port}"
-        )
-        await ctx.report_progress(
-            progress=1, total=3, message=f"Opened Colab notebook: {url}"
-        )
-        await ctx.report_progress(
-            progress=2,
-            total=3,
-            message=(
-                "Waiting for user to connect in Colab - "
-                f"will wait for {UI_CONNECTION_TIMEOUT:.0f}s"
-            ),
-        )
-        connected = await session.await_connection(UI_CONNECTION_TIMEOUT)
-        logger.info(
-            "Session '%s' %s",
-            session.notebook_id,
-            "connected" if connected else "timed out waiting for the browser",
-        )
-        await ctx.report_progress(
-            progress=3,
-            total=3,
-            message=(
-                "The Colab UI is successfully connected!"
-                if connected
-                else "Timeout while waiting for the user to connect."
-            ),
-        )
-        return _status(session, connected=connected, url=url)
+        return await open_connection(manager, notebook_url, notebook_id, ctx)
 
     @mcp.tool
     async def add_code_cell(
@@ -250,5 +256,7 @@ def build_server(manager: SessionManager) -> FastMCP:
         return await _forward(
             MOVE_CELL, {"cellId": cellId, "cellIndex": cellIndex}, notebook_id
         )
+
+    register_registry_tools(mcp, manager, open_connection)
 
     return mcp
