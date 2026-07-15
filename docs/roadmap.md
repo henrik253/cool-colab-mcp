@@ -10,10 +10,10 @@ implemented together on one branch: `feature/architecture-skeleton`.
 
 Status legend: `[ ]` open · `[x]` done
 
-## Wave status (snapshot 2026-07-14)
+## Wave status (snapshot 2026-07-15)
 
-Per-section bullets below are checked only once their branch **merges into `integration`**, so
-today only the merged skeleton shows checks. In-flight branches and their exact state:
+Per-section bullets below are checked only once their branch **merges into `integration`**.
+All Phase 1 feature branches are now merged; the integration refactor sweep is in progress.
 
 | Feature | Section | Branch | State |
 |---|---|---|---|
@@ -24,11 +24,11 @@ today only the merged skeleton shows checks. In-flight branches and their exact 
 | Persistent auth | 9 | — | ✅ **Merged** to `integration` (PR #6, `b6468db`) |
 | Snapshots | 8 | — | ✅ **Merged** to `integration` (PR #7, `da81a35`) |
 | Direct file upload | 10 | — | ✅ **Merged** to `integration` (PR #8, `129ac72`) |
-| Runtime control | 11 | `feature/runtime-control` | 🟡 Plan-review approved; rebased gates green — PR pending |
+| Runtime control | 11 | — | ✅ **Merged** to `integration` (PR #9, `b809019`) |
+| Integration refactor | — | `integration` | 🟡 Combined `main...integration` sweep in progress |
 
-None of the remaining 🟡 branches have a PR yet. Resuming means: finish each branch's review fixes →
-squash → push → PR into `integration` → CI green → squash-merge (one at a time), then launch
-Wave 2, then the integration refactor sweep before `integration` → `main`.
+Next: finish the behavior-preserving integration refactor sweep, verify the full suite, then open
+the single `integration` → `main` PR for review.
 
 ---
 
@@ -391,9 +391,8 @@ Runtime-control coverage in `runtime_client_test.py`
 `test_stop_without_mapping_releases_nothing`, `test_stop_releases_only_selected_assignment`,
 `test_restart_rejects_unknown_accelerator`, `test_restart_switches_only_selected_assignment`,
 `test_api_backend_failure_is_structured`, `test_disconnect_closes_only_local_session`,
-`test_disconnect_backend_failure_is_structured`). The section stays unchecked until this branch
-merges into `integration`; full automatic snapshot/bootstrap/checkpoint orchestration remains
-Phase 2 (§14).
+`test_disconnect_backend_failure_is_structured`). Full automatic
+snapshot/bootstrap/checkpoint orchestration remains Phase 2 (§14).
 
 ---
 
