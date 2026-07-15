@@ -17,6 +17,7 @@
 import asyncio
 import contextlib
 import json
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack
@@ -44,6 +45,8 @@ from cool_colab_mcp.constants import (
 )
 from cool_colab_mcp.errors import ToolFailed, fail
 from cool_colab_mcp.sessions.websocket_server import ColabWebSocketServer
+
+logger = logging.getLogger(__name__)
 
 
 def validate_notebook_url(url: str) -> str:
@@ -217,6 +220,9 @@ class NotebookSession:
         except ToolFailed:
             raise
         except Exception as exc:
+            logger.exception(
+                "Forwarding tool '%s' to notebook '%s' failed", name, self.notebook_id
+            )
             # A WebSocket drop mid-call surfaces as an unstructured exception
             # from the read stream; translate it into the not_connected
             # contract. Errors while the connection is still live are real

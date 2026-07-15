@@ -15,10 +15,13 @@
 """SessionManager — routes notebook_id → NotebookSession (plan.md §6)."""
 
 import asyncio
+import logging
 
 from cool_colab_mcp.constants import DEFAULT_NOTEBOOK_ID
 from cool_colab_mcp.errors import fail
 from cool_colab_mcp.sessions.session import NotebookSession
+
+logger = logging.getLogger(__name__)
 
 
 class SessionManager:
@@ -58,6 +61,9 @@ class SessionManager:
                 session = NotebookSession(key)
                 await session.start()
                 self._sessions[key] = session
+                logger.info(
+                    "Created session '%s' (WebSocket port %d)", key, session.port
+                )
         return session
 
     async def close(self, notebook_id: str | None = None) -> None:
@@ -65,6 +71,7 @@ class SessionManager:
         session = self.get(notebook_id)
         del self._sessions[session.notebook_id]
         await session.aclose()
+        logger.info("Closed session '%s'", session.notebook_id)
 
     async def aclose(self) -> None:
         """Shut down every session."""
