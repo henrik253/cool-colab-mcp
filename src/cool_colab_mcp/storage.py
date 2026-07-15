@@ -54,11 +54,10 @@ def load(name: str) -> dict[str, Any]:
     return json.loads(path.read_text())
 
 
-def save(name: str, data: dict[str, Any]) -> None:
-    """Write the named store atomically (temp file in the same directory + os.replace)."""
-    path = _path(name)
+def save_json(path: Path, data: dict[str, Any]) -> None:
+    """Write JSON atomically (temp file in the same directory + os.replace)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{name}-")
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}-")
     try:
         with os.fdopen(fd, "w") as file:
             json.dump(data, file, indent=2)
@@ -67,3 +66,8 @@ def save(name: str, data: dict[str, Any]) -> None:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp)
         raise
+
+
+def save(name: str, data: dict[str, Any]) -> None:
+    """Write the named store atomically."""
+    save_json(_path(name), data)

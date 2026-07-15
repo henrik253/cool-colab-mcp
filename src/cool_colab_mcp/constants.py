@@ -51,6 +51,11 @@ STORAGE_SUFFIX = ".json"
 STORAGE_LOCK_SUFFIX = ".lock"
 PROCESS_REGISTRY_STORE = "servers"  # storage.py store of running WebSocket servers
 REGISTRY_STORE = "registry"  # storage.py store holding the notebook registry
+SNAPSHOT_DIR_NAME = "snapshots"
+SNAPSHOT_TIMESTAMP_FORMAT = "%Y%m%dT%H%M%S%fZ"
+NOTEBOOK_SUFFIX = ".ipynb"
+IPYNB_FORMAT = 4
+IPYNB_MINOR_FORMAT = 5
 
 # Authentication (plan.md §3). Scopes and the fixed OAuth callback port are taken
 # from the reference fork SebastianGilPinzon/colab-mcp (Apache 2.0), src/colab_mcp/auth.py;

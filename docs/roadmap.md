@@ -21,8 +21,9 @@ today only the merged skeleton shows checks. In-flight branches and their exact 
 | Upstream reliability fixes | 2 | — | ✅ **Merged** to `integration` (PR #3, `3b30d3b`) |
 | Structured logging + doctor | 4 | — | ✅ **Merged** to `integration` (PR #4, `3537363`) |
 | Notebook registry | 5 | — | ✅ **Merged** to `integration` (PR #5, `e0d0657`) |
-| Persistent auth | 9 | `feature/persistent-auth` | 🟡 Security review fixes applied; rebased onto `integration`; gates green — final re-review pending |
-| Snapshots / uploads / runtime | 8/10/11 | — | ⬜ **Wave 2 — not started** |
+| Persistent auth | 9 | — | ✅ **Merged** to `integration` (PR #6, `b6468db`) |
+| Snapshots | 8 | `feature/snapshots` | 🟡 Plan-review approved; gates green — PR pending |
+| Uploads / runtime | 10/11 | `feature/file-upload`, `feature/runtime-control` | 🟡 Wave 2 in progress |
 
 None of the remaining 🟡 branches have a PR yet. Resuming means: finish each branch's review fixes →
 squash → push → PR into `integration` → CI green → squash-merge (one at a time), then launch
@@ -260,11 +261,40 @@ over every instrumented module), `TestNamespacedLoggers::test_registry_failure_u
 
 ## 8. Notebook snapshots (plan.md §5)
 
-- [ ] Tools: `create_snapshot`, `list_snapshots`, `restore_snapshot`, `export_notebook`
-- [ ] Snapshots are valid `.ipynb` files
-- [ ] Snapshots survive server restart
+- [x] Tools: `create_snapshot`, `list_snapshots`, `restore_snapshot`, `export_notebook`
+- [x] Snapshots are valid `.ipynb` files
+- [x] Snapshots survive server restart
 
-**Tests:** —
+**Tests:** `snapshot_manager_test.py`
+(`test_notebook_document_preserves_cells_metadata_and_outputs`,
+`test_notebook_document_stores_recovery_metadata`,
+`test_unexpected_cell_payload_is_protocol_error`,
+`test_malformed_frontend_cells_are_rejected` (parametrized),
+`test_create_list_load_roundtrip_survives_reinstantiation`,
+`test_unknown_snapshot_is_structured_invalid_input`,
+`test_snapshot_id_cannot_escape_notebook_directory`,
+`test_notebook_id_cannot_escape_snapshot_directory`,
+`test_corrupt_snapshot_is_protocol_error`,
+`test_schema_invalid_snapshot_is_protocol_error`,
+`test_create_filesystem_failure_is_structured`,
+`test_list_filesystem_failure_is_structured`, `test_export_requires_ipynb_suffix`,
+`test_export_writes_valid_notebook`) and `snapshots_tools_test.py`
+(`test_create_snapshot_writes_valid_ipynb`,
+`test_create_snapshot_stores_recovery_metadata`,
+`test_create_snapshot_disconnected_is_structured`,
+`test_create_snapshot_unknown_notebook_is_structured`,
+`test_list_snapshots_survives_server_restart`,
+`test_list_snapshots_rejects_empty_notebook_id`,
+`test_list_snapshots_filesystem_failure_is_structured`,
+`test_restore_snapshot_replaces_cells_in_order`,
+`test_restore_unknown_snapshot_is_structured`,
+`test_restore_disconnected_is_structured`,
+`test_restore_unknown_notebook_is_structured`,
+`test_export_notebook_writes_current_cells`,
+`test_export_bad_destination_is_structured`,
+`test_export_disconnected_is_structured`,
+`test_export_unknown_notebook_is_structured`,
+`test_export_filesystem_failure_is_structured`)
 
 ## 9. Persistent authentication (plan.md §3)
 
