@@ -38,6 +38,7 @@ from cool_colab_mcp.constants import (
     PROXY_TOKEN_PARAM,
     RUN_CODE_CELL,
     SERVER_NAME,
+    TAB_DEDUP_PARAM,
     UI_CONNECTION_TIMEOUT,
     UPDATE_CELL,
 )
@@ -127,8 +128,14 @@ def build_server(manager: SessionManager) -> FastMCP:
         except ToolFailed as failure:
             return failure.error.as_result()
 
+        # `?p=<port>` makes the URL unique per server so Chrome cannot dedupe
+        # onto a stale tab whose fragment points at a dead server; the
+        # fragment stays the source of truth for the Colab frontend
+        # (fix from SebastianGilPinzon/colab-mcp, Apache 2.0).
+        separator = "&" if "?" in url else "?"
         webbrowser.open_new(
-            f"{url}#{PROXY_TOKEN_PARAM}={session.token}&{PROXY_PORT_PARAM}={session.port}"
+            f"{url}{separator}{TAB_DEDUP_PARAM}={session.port}"
+            f"#{PROXY_TOKEN_PARAM}={session.token}&{PROXY_PORT_PARAM}={session.port}"
         )
         await ctx.report_progress(
             progress=1, total=3, message=f"Opened Colab notebook: {url}"

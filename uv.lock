@@ -215,6 +215,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anyio" },
     { name = "fastmcp" },
+    { name = "filelock" },
     { name = "google-auth-oauthlib" },
     { name = "jupyter-kernel-client" },
     { name = "mcp", extra = ["cli"] },
@@ -242,6 +243,7 @@ dev = [
 requires-dist = [
     { name = "anyio", specifier = ">=4.5" },
     { name = "fastmcp", specifier = "==2.14.5" },
+    { name = "filelock", specifier = ">=3.20.0" },
     { name = "google-auth-oauthlib", specifier = ">=0.7.0" },
     { name = "jupyter-kernel-client", specifier = ">=0.9.0" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.20.0" },

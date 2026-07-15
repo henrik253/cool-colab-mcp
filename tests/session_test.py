@@ -109,6 +109,44 @@ class TestNotebookSessionCallTool:
         assert result.structured_content == {"ok": True}
 
     @pytest.mark.asyncio
+    async def test_mid_call_drop_raises_structured_not_connected(self):
+        proxy = mock_proxy_client()
+        nb_session = make_session(proxy)
+
+        async def drop(*args, **kwargs):
+            proxy.is_connected.return_value = False  # the WebSocket just died
+            raise ConnectionError("stream ends after 0 bytes")
+
+        proxy.call_tool = AsyncMock(side_effect=drop)
+
+        with pytest.raises(ToolFailed) as exc_info:
+            await nb_session.call_tool("get_cells", {})
+        assert exc_info.value.error.kind == "not_connected"
+        assert exc_info.value.error.details == {"notebook_id": "nb-1"}
+        assert isinstance(exc_info.value.__cause__, ConnectionError)
+
+    @pytest.mark.asyncio
+    async def test_error_while_still_connected_propagates(self):
+        proxy = mock_proxy_client([RuntimeError("boom")])
+        with pytest.raises(RuntimeError, match="boom"):
+            await make_session(proxy).call_tool("get_cells", {})
+
+    @pytest.mark.asyncio
+    async def test_mid_call_drop_during_run_code(self):
+        proxy = mock_proxy_client()
+        nb_session = make_session(proxy)
+
+        async def drop(*args, **kwargs):
+            proxy.is_connected.return_value = False
+            raise ConnectionError("Colab Frontend disconnected")
+
+        proxy.call_tool = AsyncMock(side_effect=drop)
+
+        with pytest.raises(ToolFailed) as exc_info:
+            await nb_session.run_code("1+1")
+        assert exc_info.value.error.kind == "not_connected"
+
+    @pytest.mark.asyncio
     async def test_serializes_via_session_lock(self):
         proxy = mock_proxy_client()
         nb_session = make_session(proxy)

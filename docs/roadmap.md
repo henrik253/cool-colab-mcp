@@ -18,7 +18,7 @@ today only the merged skeleton shows checks. In-flight branches and their exact 
 | Feature | Section | Branch | State |
 |---|---|---|---|
 | Architecture skeleton | 0/2/3/6/7 | — | ✅ **Merged** to `integration` (PR #2, `14fdbbc`) |
-| Upstream reliability fixes | 2 | `feature/reliability-fixes` | 🟡 Code complete, gates green — **uncommitted** in worktree; interrupted before commit/review |
+| Upstream reliability fixes | 2 | `feature/reliability-fixes` | 🟡 Code complete, gates green, plan-review findings fixed — PR pending |
 | Structured logging + doctor | 4 | `feature/logging-doctor` | 🟡 Committed (`da48f78`), reviewed → **REQUEST CHANGES** (2 minor: URL-logging wording, single-source `WEBSOCKET_HOST`); fixes not yet applied |
 | Notebook registry | 5 | `feature/notebook-registry` | 🟡 Committed (`55c1991`), reviewed → **REQUEST CHANGES** (4 findings); fixes **partially applied** (records.py/tools.py done; 2 record-level tests not yet added) |
 | Persistent auth | 9 | `feature/persistent-auth` | 🟡 Committed (`2a61e9c`), reviewed → **REQUEST CHANGES** (1 blocking: broaden refresh exception catch; 2 minor); fixes not yet applied |
@@ -68,18 +68,53 @@ Port from [SebastianGilPinzon/colab-mcp](https://github.com/SebastianGilPinzon/c
 (Apache 2.0, cherry-pick with attribution):
 
 - [x] Pre-register all notebook tools at startup (clients ignore `tools/list_changed`) — landed with the architecture skeleton (`feature/architecture-skeleton`)
-- [ ] IPv4/IPv6 dual-stack bind + Private Network Access CORS headers
-- [ ] Unique `?p=<port>` notebook URL to prevent stale Chrome tab reuse
-- [ ] Corrected Colab API signatures (`run_code_cell`/`cellId`, `move_cell`, `ColabClient` init)
-- [ ] Stale-server process registry with detection and cleanup
-- [ ] Structured `not_connected` on mid-call WebSocket drop (today an unstructured
+- [x] IPv4/IPv6 dual-stack bind + Private Network Access CORS headers — adapted from the
+      reference fork's IPv4-only bind to a true dual-stack bind (both families on one
+      probed port). Note: the `websockets` library rejects non-GET methods before
+      `process_request`, so a literal OPTIONS preflight cannot be answered; the decisive
+      PNA headers ride on the upgrade response (and any parseable non-upgrade request
+      gets a 204 with them)
+- [x] Unique `?p=<port>` notebook URL to prevent stale Chrome tab reuse
+- [x] Corrected Colab API signatures (`run_code_cell`/`cellId`, `move_cell`) — verified
+      against the reference fork, the skeleton's schemas already match; `ColabClient`
+      init lands with the runtime API (§11, no such client exists here yet)
+- [x] Stale-server process registry with detection and cleanup (`--list-running`,
+      `--kill-stale`, prune on startup; one entry per WebSocket server via `storage.py`)
+- [x] Structured `not_connected` on mid-call WebSocket drop (today an unstructured
       exception surfaces)
 
 **Tests:** (pre-registration) `server_test.py::TestStaticToolSurface`:
 `test_all_tools_listed_while_disconnected`,
 `test_notebook_tool_disconnected_returns_not_connected` (parametrized over every notebook
-tool), `test_connected_tool_forwards_to_proxy_client` (parametrized); the remaining
-bullets get their tests with their fixes
+tool), `test_connected_tool_forwards_to_proxy_client` (parametrized);
+(dual-stack + PNA) `websocket_server_test.py`:
+`test_all_bound_sockets_share_the_reported_port`,
+`test_connects_over_both_address_families` (parametrized IPv4/IPv6),
+`test_non_upgrade_request_carries_private_network_access_headers`,
+`test_upgrade_response_carries_private_network_access_headers`;
+(tab dedup) `server_test.py::TestOpenColabBrowserConnection`:
+`test_url_carries_port_param_before_the_fragment`,
+`test_port_param_appends_to_an_existing_query`;
+(process registry) `websocket_server_test.py::test_registers_on_start_and_unregisters_on_clean_stop`,
+`process_registry_test.py` (`TestRegister`: `test_records_current_process`,
+`test_prunes_dead_entries_on_the_way`, `test_one_entry_per_port_of_the_same_process`,
+`test_concurrent_registrations_do_not_overwrite_each_other`;
+`TestUnregister`: `test_removes_only_the_named_port`, `test_unknown_port_is_a_no_op`,
+`test_concurrent_unregistrations_do_not_restore_entries`;
+`TestPruneDead`: `test_removes_dead_keeps_alive`, `test_nothing_to_prune`;
+`TestListRunning`: `test_filters_dead_pids`, `test_empty_registry`;
+`TestKillStale`: `test_kills_foreign_and_drops_dead_but_never_self`,
+`test_unkillable_entry_is_kept`; `TestCorruptRegistry`: `test_invalid_json_is_ignored`,
+`test_wrong_shape_is_ignored`; `TestTerminate`: `test_sigterm_suffices`,
+`test_escalates_to_sigkill`, `test_gives_up_on_immortal_process`), and
+`cli_test.py` (`TestParseArgs`: `test_flags_default_off`, `test_flags_recognized`;
+`TestListRunning`: `test_prints_entries_and_exits_before_serving`,
+`test_empty_registry_prints_notice`; `TestKillStale`: `test_kills_and_reports_then_exits`,
+`test_nothing_stale_prints_notice`; `TestNormalStartup`:
+`test_prunes_dead_entries_then_serves`);
+(mid-call drop) `session_test.py::TestNotebookSessionCallTool`:
+`test_mid_call_drop_raises_structured_not_connected`,
+`test_error_while_still_connected_propagates`, `test_mid_call_drop_during_run_code`
 
 ## 3. Per-connection notebook targeting (plan.md "Per-Connection Notebook Targeting")
 

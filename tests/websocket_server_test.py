@@ -13,6 +13,10 @@
 # limitations under the License.
 
 import asyncio
+import os
+import socket
+
+from cool_colab_mcp import process_registry
 from cool_colab_mcp.sessions.websocket_server import ColabWebSocketServer
 from mcp.types import JSONRPCRequest, JSONRPCResponse, JSONRPCMessage
 from mcp.shared.message import SessionMessage
@@ -202,6 +206,82 @@ async def test_malformed_auth_header():
                 subprotocols=["mcp"],
                 additional_headers={"Authorization": f"Bearer?{server.token}"},
             )
+
+
+@pytest.mark.asyncio
+async def test_all_bound_sockets_share_the_reported_port():
+    """Dual-stack regression: IPv4 and IPv6 must never land on different ports."""
+    async with ColabWebSocketServer() as server:
+        ports = {sock.getsockname()[1] for sock in server._server.sockets}
+        assert ports == {server.port}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "family,address", [(socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "[::1]")]
+)
+async def test_connects_over_both_address_families(family, address):
+    """Whichever family the browser resolves localhost to must reach the server."""
+    async with ColabWebSocketServer() as server:
+        if family not in {sock.family for sock in server._server.sockets}:
+            pytest.skip(f"localhost does not resolve to {address} on this host")
+        client = await websockets.connect(
+            f"ws://{address}:{server.port}",
+            origin="https://colab.research.google.com",
+            subprotocols=["mcp"],
+            additional_headers={"Authorization": f"Bearer {server.token}"},
+        )
+        assert server.connection_live.is_set()
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_non_upgrade_request_carries_private_network_access_headers():
+    """A non-upgrade GET gets 204 plus the PNA headers."""
+    async with ColabWebSocketServer() as server:
+        reader, writer = await asyncio.open_connection("127.0.0.1", server.port)
+        writer.write(
+            b"GET / HTTP/1.1\r\n"
+            b"Host: localhost\r\n"
+            b"Origin: https://colab.research.google.com\r\n"
+            b"Access-Control-Request-Method: GET\r\n"
+            b"Access-Control-Request-Private-Network: true\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        await writer.drain()
+        raw = (await asyncio.wait_for(reader.read(4096), timeout=2)).decode().lower()
+        writer.close()
+
+    assert raw.splitlines()[0].startswith("http/1.1 204")
+    assert "access-control-allow-private-network: true" in raw
+    assert "access-control-allow-origin: https://colab.research.google.com" in raw
+
+
+@pytest.mark.asyncio
+async def test_upgrade_response_carries_private_network_access_headers():
+    """Chrome re-checks PNA on the 101 upgrade response itself."""
+    async with ColabWebSocketServer() as server:
+        client = await websockets.connect(
+            f"ws://localhost:{server.port}",
+            origin="https://colab.google.com",
+            subprotocols=["mcp"],
+            additional_headers={"Authorization": f"Bearer {server.token}"},
+        )
+        headers = client.response.headers
+        assert headers["Access-Control-Allow-Private-Network"] == "true"
+        # the allowed origin is echoed back, not hardcoded to one domain
+        assert headers["Access-Control-Allow-Origin"] == "https://colab.google.com"
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_registers_on_start_and_unregisters_on_clean_stop():
+    async with ColabWebSocketServer() as server:
+        entries = process_registry.list_running()
+        assert [(e.pid, e.port, e.host) for e in entries] == [
+            (os.getpid(), server.port, server.host)
+        ]
+    assert process_registry.list_running() == []
 
 
 @pytest.mark.asyncio

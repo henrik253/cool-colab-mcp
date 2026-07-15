@@ -24,9 +24,19 @@ GITHUB_PATH_PREFIX = "/github/"
 # URL fragment parameters the Colab frontend reads to attach to our WebSocket server
 PROXY_TOKEN_PARAM = "mcpProxyToken"
 PROXY_PORT_PARAM = "mcpProxyPort"
+# Query param carrying the server port so Chrome cannot dedupe onto a stale tab
+# whose fragment points at a dead server (SebastianGilPinzon/colab-mcp fix)
+TAB_DEDUP_PARAM = "p"
+
+# WebSocket server binding
+WS_HOST = "localhost"
+IPV4_LOOPBACK = "127.0.0.1"
+PORT_BIND_ATTEMPTS = 5
 
 # Timeouts
 UI_CONNECTION_TIMEOUT = 60.0  # secs
+KILL_GRACE_TIMEOUT = 3.0  # secs to wait after signalling a stale server
+KILL_POLL_INTERVAL = 0.1  # secs between liveness polls while killing
 
 # Sessions
 DEFAULT_NOTEBOOK_ID = "default"
@@ -38,6 +48,8 @@ HOME_ENV = "COOL_COLAB_MCP_HOME"
 # Persistent local storage
 DEFAULT_HOME_DIR = "~/.cool-colab-mcp"
 STORAGE_SUFFIX = ".json"
+STORAGE_LOCK_SUFFIX = ".lock"
+PROCESS_REGISTRY_STORE = "servers"  # storage.py store of running WebSocket servers
 
 # Server and logging
 SERVER_NAME = "CoolColabMCP"

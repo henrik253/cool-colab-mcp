@@ -26,6 +26,7 @@ from cool_colab_mcp.constants import (
     PROXY_PORT_PARAM,
     PROXY_TOKEN_PARAM,
     SCRATCH_PATH,
+    TAB_DEDUP_PARAM,
 )
 from cool_colab_mcp.server import build_server
 from cool_colab_mcp.sessions.manager import SessionManager
@@ -160,7 +161,7 @@ class TestOpenColabBrowserConnection:
 
         session = manager.get()
         opened = mock_webbrowser.call_args.args[0]
-        assert opened.startswith(f"{DRIVE_URL}#")
+        assert opened.startswith(f"{DRIVE_URL}?{TAB_DEDUP_PARAM}={session.port}#")
         assert f"{PROXY_TOKEN_PARAM}={session.token}" in opened
         assert f"{PROXY_PORT_PARAM}={session.port}" in opened
         assert session.active_notebook_url == DRIVE_URL
@@ -169,6 +170,40 @@ class TestOpenColabBrowserConnection:
             "notebook_id": "default",
             "notebook_url": DRIVE_URL,
         }
+
+    @pytest.mark.asyncio
+    async def test_url_carries_port_param_before_the_fragment(
+        self, server, manager, mock_webbrowser
+    ):
+        """Chrome dedupes tabs by URL-without-fragment; `?p=<port>` makes each
+        server's URL unique so a stale tab pointing at a dead port is never
+        reused."""
+        async with Client(server) as client:
+            await client.call_tool(
+                "open_colab_browser_connection", {"notebook_url": DRIVE_URL}
+            )
+
+        session = manager.get()
+        opened = mock_webbrowser.call_args.args[0]
+        base, _, fragment = opened.partition("#")
+        assert base == f"{DRIVE_URL}?{TAB_DEDUP_PARAM}={session.port}"
+        assert fragment == (
+            f"{PROXY_TOKEN_PARAM}={session.token}&{PROXY_PORT_PARAM}={session.port}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_port_param_appends_to_an_existing_query(
+        self, server, manager, mock_webbrowser
+    ):
+        url = f"{DRIVE_URL}?usp=sharing"
+        async with Client(server) as client:
+            await client.call_tool(
+                "open_colab_browser_connection", {"notebook_url": url}
+            )
+
+        session = manager.get()
+        opened = mock_webbrowser.call_args.args[0]
+        assert opened.startswith(f"{url}&{TAB_DEDUP_PARAM}={session.port}#")
 
     @pytest.mark.asyncio
     async def test_github_url_accepted_with_caveat_documented(self, server):
@@ -206,20 +241,20 @@ class TestOpenColabBrowserConnection:
             await client.call_tool("open_colab_browser_connection", {})
 
         reopened = mock_webbrowser.call_args.args[0]
-        assert reopened.startswith(f"{DRIVE_URL}#")
+        assert reopened.startswith(f"{DRIVE_URL}?")
 
     @pytest.mark.asyncio
     async def test_env_pin_fallback(self, server, monkeypatch, mock_webbrowser):
         monkeypatch.setenv(NOTEBOOK_URL_ENV, f"{COLAB}/drive/env-pin")
         async with Client(server) as client:
             await client.call_tool("open_colab_browser_connection", {})
-        assert mock_webbrowser.call_args.args[0].startswith(f"{COLAB}/drive/env-pin#")
+        assert mock_webbrowser.call_args.args[0].startswith(f"{COLAB}/drive/env-pin?")
 
     @pytest.mark.asyncio
     async def test_scratch_fallback(self, server, mock_webbrowser):
         async with Client(server) as client:
             await client.call_tool("open_colab_browser_connection", {})
-        assert mock_webbrowser.call_args.args[0].startswith(f"{COLAB}{SCRATCH_PATH}#")
+        assert mock_webbrowser.call_args.args[0].startswith(f"{COLAB}{SCRATCH_PATH}?")
 
     @pytest.mark.asyncio
     async def test_already_connected_returns_without_reopening(
