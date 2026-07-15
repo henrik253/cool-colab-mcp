@@ -12,23 +12,24 @@ from fastmcp import Client
 from pydantic import BaseModel, field_validator, model_validator
 
 from cool_colab_mcp.auth import ensure_credentials, run_consent_flow
-from cool_colab_mcp.constants import (
-    DEMO_COMMANDS,
-    DEMO_CPU_COUNT,
-    DEMO_CPU_PROFILE,
-    DEMO_GPU_COUNT,
-    DEMO_GPU_PROFILE,
-    DEMO_NOTEBOOK_COUNT,
-    DEMO_PLACEHOLDER_MARKER,
-    DEMO_RUNTIME_DIR,
-    DEMO_UPLOAD_FILENAME,
+from constants import (
+    COMMANDS,
+    CPU_COUNT,
+    CPU_PROFILE,
+    GPU_COUNT,
+    GPU_PROFILE,
+    NOTEBOOK_COUNT,
+    NOTEBOOK_DIRS_ENV,
+    NOTEBOOK_SUFFIX,
+    PLACEHOLDER_MARKER,
+    RUNTIME_DIR,
     RUNTIME_PROFILES,
     UPLOAD_DIRS_ENV,
+    UPLOAD_FILENAME,
 )
 from cool_colab_mcp.runtime.client import RuntimeClient
 from cool_colab_mcp.server import build_server
 from cool_colab_mcp.sessions.manager import SessionManager
-from cool_colab_mcp.sessions.session import validate_notebook_url
 
 DEMO_DIR = Path(__file__).resolve().parent
 UPLOAD_FILE = DEMO_DIR / "assets" / "test-upload.txt"
@@ -37,8 +38,8 @@ UPLOAD_FILE = DEMO_DIR / "assets" / "test-upload.txt"
 class NotebookConfig(BaseModel):
     notebook_id: str
     name: str
-    url: str
-    runtime_profile: Literal[DEMO_CPU_PROFILE, DEMO_GPU_PROFILE]
+    local_path: Path
+    runtime_profile: Literal[CPU_PROFILE, GPU_PROFILE]
     assignment_endpoint: str | None = None
 
     @field_validator("notebook_id", "name")
@@ -48,12 +49,13 @@ class NotebookConfig(BaseModel):
             raise ValueError("must not be empty")
         return value
 
-    @field_validator("url")
+    @field_validator("local_path")
     @classmethod
-    def colab_url(cls, value: str) -> str:
-        validate_notebook_url(value)
-        if DEMO_PLACEHOLDER_MARKER in value:
-            raise ValueError("replace the example Colab URL")
+    def local_notebook(cls, value: Path) -> Path:
+        if value.suffix != NOTEBOOK_SUFFIX:
+            raise ValueError(f"local_path must end with {NOTEBOOK_SUFFIX}")
+        if PLACEHOLDER_MARKER in str(value):
+            raise ValueError("replace the example local notebook path")
         return value
 
 
@@ -63,29 +65,38 @@ class DemoConfig(BaseModel):
 
     @model_validator(mode="after")
     def exactly_three_distinct_notebooks(self) -> "DemoConfig":
-        if len(self.notebooks) != DEMO_NOTEBOOK_COUNT:
+        if len(self.notebooks) != NOTEBOOK_COUNT:
             raise ValueError("the demo requires exactly three notebooks")
         ids = [notebook.notebook_id for notebook in self.notebooks]
         if len(set(ids)) != len(ids):
             raise ValueError("notebook_id values must be unique")
         profiles = [notebook.runtime_profile for notebook in self.notebooks]
         if (
-            profiles.count(DEMO_CPU_PROFILE) != DEMO_CPU_COUNT
-            or profiles.count(DEMO_GPU_PROFILE) != DEMO_GPU_COUNT
+            profiles.count(CPU_PROFILE) != CPU_COUNT
+            or profiles.count(GPU_PROFILE) != GPU_COUNT
         ):
             raise ValueError("the demo requires two prototype-cpu and one debug-gpu")
         return self
 
 
 def load_config(path: Path) -> DemoConfig:
-    return DemoConfig.model_validate_json(path.read_text())
+    data = json.loads(path.read_text())
+    base = path.resolve().parent
+    oauth_path = Path(data["oauth_config_path"]).expanduser()
+    if not oauth_path.is_absolute():
+        data["oauth_config_path"] = str(base / oauth_path)
+    for notebook in data["notebooks"]:
+        local_path = Path(notebook["local_path"]).expanduser()
+        if not local_path.is_absolute():
+            notebook["local_path"] = str(base / local_path)
+    return DemoConfig.model_validate(data)
 
 
 def plan(config: DemoConfig) -> list[dict[str, str | None]]:
     return [
         {
             "notebook_id": notebook.notebook_id,
-            "url": notebook.url,
+            "local_path": str(notebook.local_path),
             "runtime_profile": notebook.runtime_profile,
             "assignment_endpoint": notebook.assignment_endpoint,
             "upload_destination": destination(notebook),
@@ -95,7 +106,7 @@ def plan(config: DemoConfig) -> list[dict[str, str | None]]:
 
 
 def destination(notebook: NotebookConfig) -> str:
-    return f"{DEMO_RUNTIME_DIR}/{notebook.notebook_id}/{DEMO_UPLOAD_FILENAME}"
+    return f"{RUNTIME_DIR}/{notebook.notebook_id}/{UPLOAD_FILENAME}"
 
 
 def authenticate(config: DemoConfig) -> None:
@@ -136,7 +147,7 @@ async def register_and_open(config: DemoConfig, mcp_clients: list[Client]) -> No
             {
                 "notebook_id": notebook.notebook_id,
                 "name": notebook.name,
-                "url": notebook.url,
+                "local_path": str(notebook.local_path),
                 "preferred_runtime": notebook.runtime_profile,
             },
         )
@@ -243,12 +254,18 @@ async def verify_uploads(
                 "path": str(Path(destination(notebook)).parent),
             },
         )
+        sync = await call(
+            client,
+            "sync_notebook_to_local",
+            {"notebook_id": notebook.notebook_id},
+        )
         results.append(
             {
                 "notebook_id": notebook.notebook_id,
                 "runtime": runtime,
                 "upload": upload,
                 "files": files,
+                "sync": sync,
             }
         )
     return results
@@ -258,6 +275,14 @@ async def live_phase(
     config: DemoConfig, phase: Literal["prepare", "configure", "verify-upload"]
 ) -> None:
     os.environ[UPLOAD_DIRS_ENV] = str(UPLOAD_FILE.parent)
+    os.environ[NOTEBOOK_DIRS_ENV] = os.pathsep.join(
+        sorted(
+            {
+                str(notebook.local_path.expanduser().resolve().parent)
+                for notebook in config.notebooks
+            }
+        )
+    )
     manager = SessionManager()
     server = build_server(manager, config.oauth_config_path)
     try:
@@ -294,7 +319,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=DEMO_COMMANDS,
+        choices=COMMANDS,
     )
     parser.add_argument("--config", type=Path, required=True)
     return parser.parse_args()

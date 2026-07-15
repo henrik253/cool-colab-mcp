@@ -50,6 +50,8 @@ ALL_TOOLS = {
     "get_notebook_status",
     "open_notebook",
     "close_notebook",
+    "sync_notebook_to_colab",
+    "sync_notebook_to_local",
     # snapshot tools (snapshots_tools_test.py)
     "create_snapshot",
     "list_snapshots",

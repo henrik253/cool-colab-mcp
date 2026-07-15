@@ -172,14 +172,25 @@ open_notebook
 close_notebook
 remove_notebook
 get_notebook_status
+sync_notebook_to_colab
+sync_notebook_to_local
 ```
 
 ### Expected behavior
 
 The notebook URL and metadata remain available after restarting the MCP server, browser, or host machine.
 
+A record may instead reference an allowed local repository `.ipynb`. Opening that record
+creates a replaceable Colab scratch session and restores the local cells into it. Explicit
+sync tools move the notebook in either direction; sync-back atomically writes the live Colab
+cells and available outputs to the registered local file. Local notebook access is restricted
+to configured repository roots, and closing a session never overwrites a local file implicitly.
+
 `open_notebook` resolves the registered URL and opens it through the per-connection
 targeting layer (`notebook_url`, see "Per-Connection Notebook Targeting").
+
+Local records use the same session routing and snapshot validation/restore machinery rather
+than a separate notebook representation.
 
 ## 5. Notebook State and Snapshots
 

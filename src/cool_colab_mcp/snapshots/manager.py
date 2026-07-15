@@ -86,6 +86,20 @@ def _validate_document(document: Any, message: str) -> dict[str, Any]:
     return document
 
 
+def load_notebook(path: Path) -> dict[str, Any]:
+    """Read and validate one nbformat-v4 notebook from disk."""
+    try:
+        document = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise fail("protocol_error", f"Notebook '{path}' cannot be read.") from exc
+    return _validate_document(document, f"Notebook '{path}' is not valid.")
+
+
+def write_notebook(path: Path, document: dict[str, Any]) -> None:
+    """Validate and atomically write one nbformat-v4 notebook."""
+    save_json(path, _validate_document(document, "Notebook is invalid."))
+
+
 def _valid_output(output: Any) -> bool:
     if not isinstance(output, dict):
         return False
@@ -204,22 +218,14 @@ class SnapshotManager:
                 notebook_id=notebook_id,
                 snapshot_id=snapshot_id,
             )
-        try:
-            document = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
-            raise fail(
-                "protocol_error", f"Snapshot '{snapshot_id}' cannot be read."
-            ) from exc
-        return _validate_document(
-            document, f"Snapshot '{snapshot_id}' is not a valid notebook."
-        )
+        return load_notebook(path)
 
     def export(self, document: dict[str, Any], destination: str) -> Path:
         path = Path(destination).expanduser()
         if path.suffix != NOTEBOOK_SUFFIX:
             raise fail("invalid_input", f"destination must end with {NOTEBOOK_SUFFIX}.")
         try:
-            save_json(path, _validate_document(document, "Notebook is invalid."))
+            write_notebook(path, document)
         except OSError as exc:
             raise fail("invalid_input", f"Cannot write notebook to '{path}'.") from exc
         return path

@@ -8,8 +8,9 @@ order. **[docs/roadmap.md](docs/roadmap.md) is the source of truth for progress*
 in progress, and which tests cover each feature. Keep it updated in the same branch as the feature
 it describes.
 
-All markdown documentation lives in `docs/`. The only exceptions are README.md and CLAUDE.md,
-which must stay at the repo root (GitHub and Claude Code read them from there).
+All markdown documentation lives in `docs/`. The exceptions are README.md and CLAUDE.md at the
+repo root (GitHub and Claude Code read them there), plus documentation owned by a self-contained,
+copyable example project, which stays inside that example's directory.
 
 ## Commands
 

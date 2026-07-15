@@ -11,7 +11,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-RUNNER = Path(__file__).parents[1] / "demo" / "three_notebooks" / "run_demo.py"
+RUNNER = Path(__file__).parent / "run_demo.py"
+sys.path.insert(0, str(RUNNER.parent))
 SPEC = importlib.util.spec_from_file_location("three_notebook_demo", RUNNER)
 assert SPEC and SPEC.loader
 DEMO = importlib.util.module_from_spec(SPEC)
@@ -23,7 +24,7 @@ def notebook(notebook_id: str, profile: str, index: int) -> dict:
     return {
         "notebook_id": notebook_id,
         "name": notebook_id,
-        "url": f"https://colab.research.google.com/drive/file-{index}",
+        "local_path": f"/tmp/notebook-{index}.ipynb",
         "runtime_profile": profile,
         "assignment_endpoint": f"endpoint-{index}",
     }
@@ -66,6 +67,17 @@ def test_plan_has_two_cpu_one_t4_and_isolated_upload_destinations(tmp_path):
     assert len({item["upload_destination"] for item in notebooks}) == 3
 
 
+def test_relative_paths_resolve_from_the_demo_config(tmp_path):
+    data = config(oauth_config_path="config/oauth.json")
+    for index, item in enumerate(data["notebooks"], start=1):
+        item["local_path"] = f"notebooks/notebook-{index}.ipynb"
+    path = tmp_path / "config.local.json"
+    path.write_text(json.dumps(data))
+    loaded = DEMO.load_config(path)
+    assert loaded.oauth_config_path == tmp_path / "config/oauth.json"
+    assert loaded.notebooks[0].local_path == tmp_path / "notebooks/notebook-1.ipynb"
+
+
 def test_plan_requires_three_unique_notebooks(tmp_path):
     duplicate = notebook("same", "prototype-cpu", 1)
     result = run_plan(
@@ -91,12 +103,12 @@ def test_plan_requires_two_cpu_and_one_t4(tmp_path):
     assert "two prototype-cpu and one debug-gpu" in result.stderr
 
 
-def test_plan_rejects_placeholder_url(tmp_path):
+def test_plan_rejects_placeholder_local_path(tmp_path):
     records = config()["notebooks"]
-    records[0]["url"] = "https://colab.research.google.com/drive/REPLACE_WITH_FILE_ID"
+    records[0]["local_path"] = "/tmp/REPLACE_WITH_NOTEBOOK.ipynb"
     result = run_plan(tmp_path, config(notebooks=records))
     assert result.returncode != 0
-    assert "replace the example Colab URL" in result.stderr
+    assert "replace the example local notebook path" in result.stderr
 
 
 def demo_config(endpoints: bool = True):
@@ -163,6 +175,8 @@ async def test_verify_upload_accepts_two_cpu_and_one_t4(monkeypatch):
             return {"runtime": json.dumps({"accelerator": accelerator})}
         if tool == "upload_file":
             return {"state": "complete", "sha256": "verified"}
+        if tool == "sync_notebook_to_local":
+            return {"direction": "to_local"}
         return {"files": [{"path": arguments["path"] + "/test-upload.txt"}]}
 
     monkeypatch.setattr(DEMO, "call", fake_call)

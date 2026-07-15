@@ -43,6 +43,8 @@ from cool_colab_mcp.constants import (
     TAB_DEDUP_PARAM,
     UI_CONNECTION_TIMEOUT,
     UPDATE_CELL,
+    COLAB,
+    SCRATCH_PATH,
 )
 from cool_colab_mcp.errors import ToolFailed, fail
 from cool_colab_mcp.registry.tools import register_registry_tools
@@ -71,15 +73,18 @@ async def open_connection(
     notebook_url: str | None,
     notebook_id: str | None,
     ctx: Context,
+    force_scratch: bool = False,
 ) -> ToolResult:
     """The one open flow: resolve the notebook, open the browser tab, await the
     frontend connection with progress reports. Shared by
     open_colab_browser_connection and the registry's open_notebook; returns
     structured errors instead of raising."""
     try:
-        if notebook_url is not None:
+        if notebook_url is not None and not force_scratch:
             validate_notebook_url(notebook_url)
         session = await manager.get_or_create(notebook_id)
+        if force_scratch:
+            notebook_url = f"{COLAB}{SCRATCH_PATH}"
         if session.is_connected():
             if notebook_url is not None and notebook_url != session.active_notebook_url:
                 raise fail(
@@ -92,7 +97,11 @@ async def open_connection(
                     requested_notebook_url=notebook_url,
                 )
             return _status(session, connected=True, url=session.active_notebook_url)
-        url = session.resolve_notebook_url(notebook_url)
+        if force_scratch:
+            session.active_notebook_url = notebook_url
+            url = notebook_url
+        else:
+            url = session.resolve_notebook_url(notebook_url)
     except ToolFailed as failure:
         return failure.error.as_result()
 
