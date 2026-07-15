@@ -50,6 +50,11 @@ ALL_TOOLS = {
     "get_notebook_status",
     "open_notebook",
     "close_notebook",
+    # snapshot tools (snapshots_tools_test.py)
+    "create_snapshot",
+    "list_snapshots",
+    "restore_snapshot",
+    "export_notebook",
 }
 
 NOTEBOOK_TOOL_CALLS = [
