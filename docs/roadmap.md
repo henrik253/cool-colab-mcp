@@ -13,7 +13,7 @@ Status legend: `[ ]` open · `[x]` done
 ## Wave status (snapshot 2026-07-15)
 
 Per-section bullets below are checked only once their branch **merges into `integration`**.
-All Phase 1 feature branches are now merged; the integration refactor sweep is in progress.
+All Phase 1 feature branches and the integration refactor sweep are complete.
 
 | Feature | Section | Branch | State |
 |---|---|---|---|
@@ -25,7 +25,7 @@ All Phase 1 feature branches are now merged; the integration refactor sweep is i
 | Snapshots | 8 | — | ✅ **Merged** to `integration` (PR #7, `da81a35`) |
 | Direct file upload | 10 | — | ✅ **Merged** to `integration` (PR #8, `129ac72`) |
 | Runtime control | 11 | — | ✅ **Merged** to `integration` (PR #9, `b809019`) |
-| Integration refactor | — | `integration` | 🟡 Combined `main...integration` sweep in progress |
+| Integration refactor | — | `integration` | ✅ Combined `main...integration` sweep complete |
 
 Next: finish the behavior-preserving integration refactor sweep, verify the full suite, then open
 the single `integration` → `main` PR for review.
