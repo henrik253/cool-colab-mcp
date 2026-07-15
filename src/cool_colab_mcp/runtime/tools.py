@@ -1,5 +1,6 @@
 """FastMCP tools for runtime status and lifecycle operations."""
 
+from collections.abc import Awaitable
 from pathlib import Path
 
 from fastmcp import FastMCP
@@ -30,9 +31,6 @@ def register_runtime_tools(
             )
         return RuntimeClient(ensure_credentials(oauth_config_path))
 
-    async def session(notebook_id: str | None):
-        return manager.get(notebook_id)
-
     async def preserve(
         notebook_id: str | None, preservation_confirmed: bool
     ) -> dict[str, object]:
@@ -43,7 +41,7 @@ def register_runtime_tools(
                 "checkpoints before replacing the runtime. Then retry with "
                 "preservation_confirmed=true. Automatic orchestration lands in Phase 2.",
             )
-        current = await session(notebook_id)
+        current = manager.get(notebook_id)
         manifest = await current.run_code(RUNTIME_MANIFEST_CODE)
         return {
             "external_preservation_confirmed_by_caller": True,
@@ -71,14 +69,14 @@ def register_runtime_tools(
         client.unassign(assignment_endpoint)
         return 1
 
-    async def guarded(operation):
+    async def guarded(operation: Awaitable[ToolResult]) -> ToolResult:
         try:
-            return await operation()
+            return await operation
         except ToolFailed as failure:
             return failure.error.as_result()
 
     async def status_result(notebook_id: str | None) -> ToolResult:
-        current = await session(notebook_id)
+        current = manager.get(notebook_id)
         return json_tool_result(
             {
                 "notebook_id": current.notebook_id,
@@ -89,34 +87,26 @@ def register_runtime_tools(
     @mcp.tool
     async def get_runtime_status(notebook_id: str | None = None) -> ToolResult:
         """Inspect the connected notebook's actual CPU/GPU hardware."""
-
-        async def operation():
-            return await status_result(notebook_id)
-
-        return await guarded(operation)
+        return await guarded(status_result(notebook_id))
 
     @mcp.tool
     async def connect_runtime(notebook_id: str | None = None) -> ToolResult:
         """Verify a browser-connected notebook runtime and report its hardware."""
-
-        async def operation():
-            return await status_result(notebook_id)
-
-        return await guarded(operation)
+        return await guarded(status_result(notebook_id))
 
     @mcp.tool
     async def disconnect_runtime(notebook_id: str | None = None) -> ToolResult:
         """Disconnect the local notebook session without deleting its Colab VM."""
 
         async def operation():
-            current = await session(notebook_id)
+            current = manager.get(notebook_id)
             key = current.notebook_id
             await manager.close(notebook_id)
             return json_tool_result(
                 {"notebook_id": key, "disconnected": True, "runtime_stopped": False}
             )
 
-        return await guarded(operation)
+        return await guarded(operation())
 
     @mcp.tool
     async def stop_runtime(
@@ -138,7 +128,7 @@ def register_runtime_tools(
                 }
             )
 
-        return await guarded(operation)
+        return await guarded(operation())
 
     @mcp.tool
     async def restart_runtime(
@@ -208,4 +198,4 @@ def register_runtime_tools(
                 }
             )
 
-        return await guarded(operation)
+        return await guarded(operation())
