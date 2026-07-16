@@ -150,3 +150,6 @@ DIALOG_TIMEOUT_MS = 60_000
 CHROME_CHANNEL = "chrome"
 # Playwright sets this by default; it is the flag Google's sign-in check trips on.
 AUTOMATION_FLAG = "--enable-automation"
+# An exported browser session (cookies + localStorage). Treat as a credential:
+# it authenticates as the signed-in user with no password or 2FA.
+SESSION_FILE_NAME = "colab-session.json"

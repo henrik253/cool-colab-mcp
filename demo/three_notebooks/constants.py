@@ -28,6 +28,8 @@ COMMANDS = (
     "configure",
     "verify-upload",
     "chrome",
+    "export-session",
+    "session-check",
 )
 # Attaching to the operator's own Chrome (see README "Using your own Chrome").
 # Chrome refuses remote debugging on the default profile, so this uses its own
@@ -35,4 +37,7 @@ COMMANDS = (
 CHROME_DEBUG_PORT = 9222
 CHROME_PROFILE_DIR = "chrome-profile"
 CHROME_APP = "Google Chrome"
-CDP_URL = f"http://localhost:{CHROME_DEBUG_PORT}"
+# 127.0.0.1, not "localhost": Chrome binds the debug port on IPv4 only, while
+# localhost may resolve to ::1 first and refuse the connection.
+CDP_URL = f"http://127.0.0.1:{CHROME_DEBUG_PORT}"
+SESSION_CHECK_POLLS = 10

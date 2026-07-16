@@ -18,7 +18,10 @@ Replaces the fire-and-forget `webbrowser.open_new`: this owns the page, so it ca
 approve the connect dialog and map each tab to a notebook_id (plan.md §10/§11).
 """
 
+import json
 import logging
+import os
+from pathlib import Path
 
 from cool_colab_mcp.browser.adapters.colab import approval
 from cool_colab_mcp.constants import (
@@ -43,6 +46,7 @@ class BrowserController:
         headless: bool = False,
         use_chrome: bool = True,
         cdp_url: str | None = None,
+        session_file: Path | None = None,
     ):
         self.headless = headless
         # Real Chrome by default: Google refuses sign-in in Playwright's bundled
@@ -52,6 +56,10 @@ class BrowserController:
         # instead of launching one. The most reliable route past Google's
         # automated-browser sign-in check.
         self.cdp_url = cdp_url
+        # A session exported from a signed-in browser. Google only checks for
+        # automation at sign-in, so a headless browser holding these cookies is
+        # already authenticated — this is what makes a terminal-only server work.
+        self.session_file = session_file
         self._playwright = None
         self._context = None
         self._owns_browser = True
@@ -80,6 +88,22 @@ class BrowserController:
                 self._browser.contexts[0]
                 if self._browser.contexts
                 else await self._browser.new_context()
+            )
+        elif self.session_file:
+            if not self.session_file.exists():
+                raise fail(
+                    "user_action_required",
+                    f"No browser session at {self.session_file}. Create one on a "
+                    "machine with a display ('chrome' then 'export-session') and "
+                    "copy it here.",
+                )
+            # Playwright's own Chromium is fine here: we are not signing in, only
+            # replaying an existing session, so no real Chrome install is needed.
+            self._browser = await self._playwright.chromium.launch(
+                headless=self.headless
+            )
+            self._context = await self._browser.new_context(
+                storage_state=str(self.session_file)
             )
         else:
             # A persistent profile keeps the Google login across restarts
@@ -132,6 +156,24 @@ class BrowserController:
         logger.info("opened notebook tab (notebook_id=%s, port=%d)", notebook_id, port)
         await approval.approve(page, token, port, DIALOG_TIMEOUT_MS)
         logger.info("approved MCP dialog (notebook_id=%s)", notebook_id)
+
+    async def export_session(self, path: Path) -> int:
+        """Write this browser's cookies/localStorage to `path`, owner-readable only.
+
+        The result authenticates as the signed-in user with no password or 2FA, so
+        it is a credential: the file is created 0600 before any bytes are written,
+        and its contents are never logged. Returns the cookie count.
+        """
+        if self._context is None:
+            raise fail("not_connected", "Browser controller is not started.")
+        state = await self._context.storage_state()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # open with 0600 up front: never exists world-readable, even briefly
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as file:
+            json.dump(state, file)
+        logger.info("exported browser session (%d cookies)", len(state["cookies"]))
+        return len(state["cookies"])
 
     async def open_page(self, url: str):
         """Open a standalone page with no approval flow.

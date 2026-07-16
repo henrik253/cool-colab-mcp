@@ -32,12 +32,18 @@ from constants import (
     CHROME_DEBUG_PORT,
     CHROME_PROFILE_DIR,
     RUNTIME_DIR,
+    SESSION_CHECK_POLLS,
     RUNTIME_PROFILES,
     SIGN_IN_MARKER,
     UPLOAD_DIRS_ENV,
     UPLOAD_FILENAME,
 )
-from cool_colab_mcp.constants import BROWSER_PROFILE_DIR_NAME, COLAB, SCRATCH_PATH
+from cool_colab_mcp.constants import (
+    BROWSER_PROFILE_DIR_NAME,
+    COLAB,
+    SCRATCH_PATH,
+    SESSION_FILE_NAME,
+)
 from cool_colab_mcp.runtime.client import RuntimeClient
 from cool_colab_mcp.server import build_server
 from cool_colab_mcp.sessions.manager import SessionManager
@@ -167,6 +173,51 @@ def launch_chrome() -> None:
         f"  --auto-approve --cdp-url {CDP_URL}",
         flush=True,
     )
+
+
+def session_path(explicit: str | None) -> Path:
+    return Path(explicit) if explicit else base_dir() / SESSION_FILE_NAME
+
+
+async def export_session(cdp_url: str, path: Path) -> None:
+    """Copy the session out of the Chrome you signed into, for a headless server.
+
+    The file authenticates as you with no password or 2FA. Keep it 0600, never
+    commit it, and re-export when it expires.
+    """
+    browser = BrowserController(cdp_url=cdp_url)
+    await browser.start()
+    try:
+        count = await browser.export_session(path)
+        print(
+            f"Exported {count} cookies to {path} (mode 0600).\n"
+            "This file authenticates as you: copy it to the server over scp, keep "
+            "it out of git and images, and re-export when it stops working.",
+            flush=True,
+        )
+    finally:
+        await browser.aclose()
+
+
+async def session_check(path: Path, headless: bool = True) -> bool:
+    """Report whether an exported session still signs in, before a run depends on it."""
+    browser = BrowserController(headless=headless, session_file=path)
+    await browser.start()
+    try:
+        page = await browser.open_page(f"{COLAB}{SCRATCH_PATH}")
+        for _ in range(SESSION_CHECK_POLLS):
+            if await signed_in(page):
+                print(f"Session at {path}: valid (signed in).", flush=True)
+                return True
+            await asyncio.sleep(LOGIN_POLL_S)
+        print(
+            f"Session at {path}: EXPIRED or invalid. Re-run 'chrome', sign in, "
+            "then 'export-session'.",
+            flush=True,
+        )
+        return False
+    finally:
+        await browser.aclose()
 
 
 class WindowClosed(RuntimeError):
@@ -383,6 +434,7 @@ async def live_phase(
     auto_approve: bool = False,
     headless: bool = False,
     cdp_url: str | None = None,
+    session_file: Path | None = None,
 ) -> None:
     os.environ[UPLOAD_DIRS_ENV] = str(UPLOAD_FILE.parent)
     os.environ[NOTEBOOK_DIRS_ENV] = os.pathsep.join(
@@ -395,7 +447,9 @@ async def live_phase(
     )
     browser = None
     if auto_approve:
-        browser = BrowserController(headless=headless, cdp_url=cdp_url)
+        browser = BrowserController(
+            headless=headless, cdp_url=cdp_url, session_file=session_file
+        )
         await browser.start()
         print(
             "Managed browser started; Colab MCP dialogs will be approved automatically."
@@ -456,6 +510,15 @@ def parse_args() -> argparse.Namespace:
         help="run the managed browser headless (only after signing in once)",
     )
     parser.add_argument(
+        "--session-file",
+        default=None,
+        help=(
+            "browser session exported with 'export-session'. Lets a headless, "
+            "display-less server run signed in: Google only checks for automation "
+            "at sign-in, not afterwards. Treat the file as a credential."
+        ),
+    )
+    parser.add_argument(
         "--cdp-url",
         default=None,
         help=(
@@ -480,6 +543,13 @@ def main() -> None:
         asyncio.run(browser_login())
     elif args.command == "chrome":
         launch_chrome()
+    elif args.command == "export-session":
+        asyncio.run(
+            export_session(args.cdp_url or CDP_URL, session_path(args.session_file))
+        )
+    elif args.command == "session-check":
+        ok = asyncio.run(session_check(session_path(args.session_file)))
+        raise SystemExit(0 if ok else 1)
     elif args.command == "assignments":
         assignments(config)
     else:
