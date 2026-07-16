@@ -465,7 +465,40 @@ snapshot/bootstrap/checkpoint orchestration remains Phase 2 (§14).
 # Phase 2 (plan.md §10–15)
 
 ## 12. Playwright browser management
+
+- [x] `BrowserController`: managed Chromium, persistent profile, one page per `notebook_id`
+- [x] Grant Chrome's `local-network-access` permission, scoped to the Colab origin
+- [ ] Replace `webbrowser.open_new` in `server.open_connection` (wiring + opt-in flag)
+- [ ] Tab recovery after a browser crash; login/consent page detection
+- [ ] Xvfb / headless deployment (see section 15)
+
+**Tests:** `approval_test.py` (see section 13); controller wiring tests land with the
+`server.open_connection` switch-over.
+
 ## 13. Automated MCP popup approval
+
+Mechanism established empirically 2026-07-16 (frontend-bundle analysis + headless
+end-to-end spike against the real Colab UI and a real `ColabWebSocketServer`); the full
+findings, DOM surface, and failure modes are in plan.md §11 "Verified mechanism".
+
+- [x] **Confirmed the popup cannot be bypassed**: Colab's `connect-local-mcp` command
+      always awaits the dialog, there is no "remember" option, and the only dialog-free
+      path is a private `TEST_ONLY.connect()` hook we refuse to use (plan.md §14)
+- [x] Detect the dialog (`mwc-dialog.local-mcp-connect-dialog`, `state="attached"` — the
+      host has no layout box)
+- [x] Verify before clicking: Colab origin + the dialog's readonly `<token>&<port>` field
+      matches this session; refuse otherwise, without leaking the token
+- [x] Click Connect; success is the **server-side** connection signal, not the click
+- [x] Structured `user_action_required` when the dialog never appears (UI changed or the
+      `enable_colab_mcp_integration` flag is off)
+- [ ] Bounded-backoff retry around the approval attempt
+- [ ] Reconnect-after-drop path (re-navigate + re-approve)
+
+**Tests:** `approval_test.py::TestApprove` (`test_clicks_connect_when_dialog_is_ours`,
+`test_missing_dialog_is_user_action_required`, `test_refuses_unexpected_origin`,
+`test_refuses_when_dialog_shows_another_sessions_token`,
+`test_refuses_when_dialog_shows_another_port`, `test_refusal_never_leaks_the_token`)
+
 ## 14. Automated runtime-switch orchestration (snapshot → switch → verify → restore)
 ## 15. Headless deployment and recovery
 

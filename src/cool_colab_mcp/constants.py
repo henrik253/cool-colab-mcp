@@ -138,3 +138,10 @@ MOVE_CELL = "move_cell"
 
 # Keys under which frontend results may carry a cell id
 CELL_ID_KEYS = ("newCellId",)
+
+# Managed browser (plan.md §10/§11)
+BROWSER_PROFILE_DIR_NAME = "browser-profile"
+# Chrome's Local Network Access permission. A public origin (Colab) reaching localhost
+# needs this; the older Private Network Access response headers do NOT satisfy it.
+LOCAL_NETWORK_PERMISSION = "local-network-access"
+DIALOG_TIMEOUT_MS = 60_000
