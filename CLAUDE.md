@@ -47,7 +47,10 @@ Every feature follows this exact loop:
    `git worktree add ../cool-colab-mcp-worktrees/feature-<slug> -b feature/<slug> integration`
    Work only inside that worktree; never commit feature work directly on `main` or `integration`.
 3. **Implement** the feature together with its tests. A feature without tests is not done.
-4. **Update roadmap.md**: check off the feature's bullet points and list the test cases added.
+4. **Update roadmap.md in the completing commit**: check off every bullet completed by the
+   implementation, list the test cases added, and refresh the Wave status block. A feature is
+   not ready to commit as complete while its roadmap entry is stale; never defer this update to
+   a follow-up commit or PR.
 5. **Verify locally**: `uv run pytest` (full suite) and `uv run ruff check .` must pass.
 6. **Curate history**: squash WIP/fixup commits for the same coherent feature into one
    conventional commit. Keep distinct completed features as separate commits when one branch
