@@ -61,8 +61,8 @@ parallel branches and must share one persistence implementation. Covered by
 ## 1. Reproduce upstream workflow
 
 - [ ] Fork runs locally end-to-end against a real Colab notebook (manual verification)
-- [ ] Verify the real `add_code_cell` response shape and tighten `run_code`'s cell-id
-      parsing (`CELL_ID_KEYS` in constants.py) to the single verified key
+- [x] Verify the real `add_code_cell` response shape (`{"newCellId": "..."}`) and tighten
+      `run_code`'s cell-id parsing (`CELL_ID_KEYS` in constants.py) to that single key
 - [ ] Document the manual setup steps in README.md
 
 **Tests:** existing `session_test.py`, `websocket_server_test.py` pass. The live-demo harness is
@@ -77,7 +77,8 @@ covered offline by `demo/three_notebooks/demo_test.py`
 `test_verify_upload_accepts_two_cpu_and_one_t4`,
 `test_verify_upload_rejects_wrong_hardware` (CPU and T4 mismatch cases),
 `test_verify_upload_rejects_unverified_upload`,
-`test_structured_tool_failure_stops_demo_safely`)
+`test_structured_tool_failure_stops_demo_safely`); live response parsing is covered by
+`session_test.py::TestRunCode::test_verified_cell_id_parsed_from_structured_or_text`
 
 ## 2. Upstream reliability fixes (plan.md Phase 1 Baseline)
 
@@ -94,7 +95,11 @@ Port from [SebastianGilPinzon/colab-mcp](https://github.com/SebastianGilPinzon/c
 - [x] Unique `?p=<port>` notebook URL to prevent stale Chrome tab reuse
 - [x] Corrected Colab API signatures (`run_code_cell`/`cellId`, `move_cell`) — verified
       against the reference fork, the skeleton's schemas already match; `ColabClient`
-      init lands with the runtime API (§11, no such client exists here yet)
+      init lands with the runtime API (§11, no such client exists here yet). Live demo
+      verification additionally confirmed `add_code_cell.language` and `cellIndex` are
+      required. Public tools default to the reference indices (code `0`, text `-1`),
+      shared execution uses code index `0`, and restore paths send each document index;
+      every code path supplies the default `python` language.
 - [x] Stale-server process registry with detection and cleanup (`--list-running`,
       `--kill-stale`, prune on startup; one entry per WebSocket server via `storage.py`)
 - [x] Structured `not_connected` on mid-call WebSocket drop (today an unstructured

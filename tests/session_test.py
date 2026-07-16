@@ -165,7 +165,7 @@ class TestRunCode:
     @pytest.mark.asyncio
     async def test_happy_path(self):
         proxy = mock_proxy_client(
-            [fake_raw_result({"cellId": "c-1"}), fake_raw_result({"output": "42"})]
+            [fake_raw_result({"newCellId": "c-1"}), fake_raw_result({"output": "42"})]
         )
         nb_session = make_session(proxy)
 
@@ -174,7 +174,7 @@ class TestRunCode:
         assert result == {"output": "42"}
         assert proxy.call_tool.await_args_list[0].args == (
             "add_code_cell",
-            {"code": "6*7"},
+            {"code": "6*7", "cellIndex": 0, "language": "python"},
         )
         assert proxy.call_tool.await_args_list[1].args == (
             "run_code_cell",
@@ -185,11 +185,11 @@ class TestRunCode:
     @pytest.mark.parametrize(
         "add_result",
         [
-            fake_raw_result({"result": {"cell_id": "c-1"}}),
-            fake_raw_result(None, text='{"id": "c-1"}'),
+            fake_raw_result({"newCellId": "c-1"}),
+            fake_raw_result(None, text='{"newCellId": "c-1"}'),
         ],
     )
-    async def test_cell_id_parsed_from_wrapper_or_text(self, add_result):
+    async def test_verified_cell_id_parsed_from_structured_or_text(self, add_result):
         proxy = mock_proxy_client([add_result, fake_raw_result({"output": "ok"})])
 
         await make_session(proxy).run_code("pass")
@@ -199,7 +199,7 @@ class TestRunCode:
     @pytest.mark.asyncio
     async def test_unstructured_run_result_returned_as_text(self):
         proxy = mock_proxy_client(
-            [fake_raw_result({"cellId": "c-1"}), fake_raw_result(None, text="done")]
+            [fake_raw_result({"newCellId": "c-1"}), fake_raw_result(None, text="done")]
         )
         assert await make_session(proxy).run_code("pass") == {"text": "done"}
 
@@ -213,7 +213,7 @@ class TestRunCode:
     @pytest.mark.asyncio
     async def test_proxy_failure_propagates(self):
         proxy = mock_proxy_client(
-            [fake_raw_result({"cellId": "c-1"}), ValueError("boom")]
+            [fake_raw_result({"newCellId": "c-1"}), ValueError("boom")]
         )
         with pytest.raises(ValueError, match="boom"):
             await make_session(proxy).run_code("pass")

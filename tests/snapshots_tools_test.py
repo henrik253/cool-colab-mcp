@@ -137,7 +137,7 @@ async def test_restore_snapshot_replaces_cells_in_order(server, manager):
     )
     assert session.proxy_client.call_tool.call_args_list[3].args == (
         "add_code_cell",
-        {"code": "x = 1", "cellIndex": 0},
+        {"code": "x = 1", "cellIndex": 0, "language": "python"},
     )
     assert session.proxy_client.call_tool.call_args_list[4].args == (
         "add_text_cell",

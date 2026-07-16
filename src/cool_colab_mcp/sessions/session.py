@@ -33,12 +33,13 @@ from mcp.types import TextContent
 
 from cool_colab_mcp.constants import (
     ADD_CODE_CELL,
+    DEFAULT_CODE_CELL_INDEX,
+    DEFAULT_CODE_LANGUAGE,
     CELL_ID_KEYS,
     COLAB,
     DRIVE_PATH_PREFIX,
     GITHUB_PATH_PREFIX,
     NOTEBOOK_URL_ENV,
-    RESULT_KEY,
     RUN_CODE_CELL,
     SCRATCH_PATH,
     UI_CONNECTION_TIMEOUT,
@@ -198,8 +199,17 @@ class NotebookSession:
         Uploads, snapshots, and runtime checks build on this.
         """
         async with self.lock:
-            added = await self._call(ADD_CODE_CELL, {"code": code})
-            ran = await self._call(RUN_CODE_CELL, {"cellId": _extract_cell_id(added)})
+            added = await self._call(
+                ADD_CODE_CELL,
+                {
+                    "code": code,
+                    "cellIndex": DEFAULT_CODE_CELL_INDEX,
+                    "language": DEFAULT_CODE_LANGUAGE,
+                },
+            )
+            cell_id = _extract_cell_id(added)
+            args = {"cellId": cell_id}
+            ran = await self._call(RUN_CODE_CELL, args)
         if ran.structured_content is not None:
             return ran.structured_content
         return {"text": _text_of(ran)}
@@ -244,13 +254,13 @@ def _text_of(result: CallToolResult) -> str:
 
 
 def _cell_id_in(data: Any) -> str | None:
-    """Look for a cell id at the top level or nested under a "result" wrapper."""
+    """Read the cell id from the verified Colab add_code_cell response."""
     if not isinstance(data, dict):
         return None
     for key in CELL_ID_KEYS:
         if isinstance(data.get(key), str):
             return data[key]
-    return _cell_id_in(data.get(RESULT_KEY))
+    return None
 
 
 def _extract_cell_id(result: CallToolResult) -> str:
