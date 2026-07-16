@@ -12,10 +12,12 @@ NOTEBOOK_SUFFIX = ".ipynb"
 NOTEBOOK_DIRS_ENV = "COOL_COLAB_MCP_NOTEBOOK_DIRS"
 UPLOAD_DIRS_ENV = "COOL_COLAB_MCP_UPLOAD_DIRS"
 RUNTIME_PROFILES = {CPU_PROFILE: "NONE", GPU_PROFILE: "T4"}
+SIGN_IN_MARKER = "Sign in"
 COMMANDS = (
     "plan",
     "auth",
     "auth-check",
+    "login",
     "prepare",
     "assignments",
     "configure",

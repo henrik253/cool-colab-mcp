@@ -86,6 +86,18 @@ class BrowserController:
         await approval.approve(page, token, port, DIALOG_TIMEOUT_MS)
         logger.info("approved MCP dialog (notebook_id=%s)", notebook_id)
 
+    async def open_page(self, url: str):
+        """Open a standalone page with no approval flow.
+
+        Used for the one-time Google sign-in: the user signs in themselves and the
+        persistent profile keeps the session for later automated runs.
+        """
+        if self._context is None:
+            raise fail("not_connected", "Browser controller is not started.")
+        page = await self._context.new_page()
+        await page.goto(url, wait_until="domcontentloaded")
+        return page
+
     async def close(self, notebook_id: str) -> None:
         """Close one notebook's tab."""
         page = self._pages.pop(notebook_id, None)

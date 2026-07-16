@@ -15,10 +15,33 @@ manual verification, run these commands from any working directory:
 uv run python /path/to/three_notebooks/run_demo.py plan --config /path/to/three_notebooks/config.local.json
 uv run python /path/to/three_notebooks/run_demo.py auth --config /path/to/three_notebooks/config.local.json
 uv run python /path/to/three_notebooks/run_demo.py auth-check --config /path/to/three_notebooks/config.local.json
-uv run python /path/to/three_notebooks/run_demo.py prepare --config /path/to/three_notebooks/config.local.json
-uv run python /path/to/three_notebooks/run_demo.py configure --config /path/to/three_notebooks/config.local.json
-uv run python /path/to/three_notebooks/run_demo.py verify-upload --config /path/to/three_notebooks/config.local.json
+uv run python /path/to/three_notebooks/run_demo.py login --config /path/to/three_notebooks/config.local.json
+uv run python /path/to/three_notebooks/run_demo.py prepare --config /path/to/three_notebooks/config.local.json --auto-approve
+uv run python /path/to/three_notebooks/run_demo.py configure --config /path/to/three_notebooks/config.local.json --auto-approve
+uv run python /path/to/three_notebooks/run_demo.py verify-upload --config /path/to/three_notebooks/config.local.json --auto-approve
 ```
+
+## Unattended MCP approval
+
+Colab always asks the user to accept a "Connect to a local Colab MCP server" dialog, and it
+offers no "remember" option, so each phase would otherwise need three manual clicks. Passing
+`--auto-approve` opens the notebook tabs in a managed Chromium that accepts the dialog itself
+after verifying the dialog's token and port belong to that session (plan.md §11). Omit the flag
+to keep the manual behaviour.
+
+The managed browser uses a persistent profile, so **sign in to Google once**:
+
+```bash
+uv run python /path/to/three_notebooks/run_demo.py login --config /path/to/three_notebooks/config.local.json
+```
+
+That opens a Colab window; sign in there and press Enter. Only you ever type your credentials —
+they live in the browser profile under the state directory, never in this repository. Later runs
+reuse the session, and `--headless` becomes possible once the profile is signed in.
+
+`auth`/`auth-check` are a **separate** credential: the OAuth token for the runtime API, stored in
+the OS keyring. The browser sign-in above is what lets the Colab frontend open notebooks and
+runtimes.
 
 The workflow opens three independent local-backed notebooks, requests two CPU runtimes and one
 T4, uploads `assets/test-upload.txt` to each runtime, verifies the hardware and upload, and
@@ -51,4 +74,5 @@ The July 2026 live run confirmed the following frontend/runtime contracts:
 
 The current command phases are one-shot processes, so tabs disconnect when a phase finishes.
 A future persistent harness should keep one server alive across prepare, configure, upload,
-sync, and reopen verification to require only one MCP approval per tab.
+sync, and reopen verification. With `--auto-approve` the repeated approvals are handled
+automatically, so this is now a performance concern rather than a manual-clicking one.

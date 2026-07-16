@@ -12,6 +12,7 @@ from fastmcp import Client
 from pydantic import BaseModel, field_validator, model_validator
 
 from cool_colab_mcp.auth import ensure_credentials, run_consent_flow
+from cool_colab_mcp.browser.controller import BrowserController
 from constants import (
     COMMANDS,
     CPU_COUNT,
@@ -24,12 +25,15 @@ from constants import (
     PLACEHOLDER_MARKER,
     RUNTIME_DIR,
     RUNTIME_PROFILES,
+    SIGN_IN_MARKER,
     UPLOAD_DIRS_ENV,
     UPLOAD_FILENAME,
 )
+from cool_colab_mcp.constants import BROWSER_PROFILE_DIR_NAME, COLAB, SCRATCH_PATH
 from cool_colab_mcp.runtime.client import RuntimeClient
 from cool_colab_mcp.server import build_server
 from cool_colab_mcp.sessions.manager import SessionManager
+from cool_colab_mcp.storage import base_dir
 
 DEMO_DIR = Path(__file__).resolve().parent
 UPLOAD_FILE = DEMO_DIR / "assets" / "test-upload.txt"
@@ -124,6 +128,33 @@ def assignments(config: DemoConfig) -> None:
     records = RuntimeClient(credentials).list_assignments()
     safe = [{"endpoint": record["endpoint"]} for record in records]
     print(json.dumps({"assignments": safe}, indent=2))
+
+
+async def browser_login() -> None:
+    """Open the managed browser so the operator signs in to Google once.
+
+    The persistent profile keeps that session, so later --auto-approve runs need no
+    manual interaction. Only the operator ever types their credentials.
+    """
+    browser = BrowserController(headless=False)
+    await browser.start()
+    try:
+        page = await browser.open_page(f"{COLAB}{SCRATCH_PATH}")
+        print(
+            "A Colab window is open. Sign in to Google there, then press Enter here.",
+            flush=True,
+        )
+        await asyncio.to_thread(input)
+        text = await page.evaluate("(document.body.innerText||'')")
+        signed_in = SIGN_IN_MARKER not in text
+        print(
+            f"Signed in: {signed_in}. The profile is stored at "
+            f"{base_dir() / BROWSER_PROFILE_DIR_NAME}"
+        )
+        if not signed_in:
+            print("Colab still shows a sign-in prompt; re-run 'login' to try again.")
+    finally:
+        await browser.aclose()
 
 
 async def call(client: Client, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -272,7 +303,10 @@ async def verify_uploads(
 
 
 async def live_phase(
-    config: DemoConfig, phase: Literal["prepare", "configure", "verify-upload"]
+    config: DemoConfig,
+    phase: Literal["prepare", "configure", "verify-upload"],
+    auto_approve: bool = False,
+    headless: bool = False,
 ) -> None:
     os.environ[UPLOAD_DIRS_ENV] = str(UPLOAD_FILE.parent)
     os.environ[NOTEBOOK_DIRS_ENV] = os.pathsep.join(
@@ -283,7 +317,14 @@ async def live_phase(
             }
         )
     )
-    manager = SessionManager()
+    browser = None
+    if auto_approve:
+        browser = BrowserController(headless=headless)
+        await browser.start()
+        print(
+            "Managed browser started; Colab MCP dialogs will be approved automatically."
+        )
+    manager = SessionManager(browser=browser)
     server = build_server(manager, config.oauth_config_path)
     try:
         async with AsyncExitStack() as stack:
@@ -313,6 +354,8 @@ async def live_phase(
             print(json.dumps({"verification": results}, indent=2))
     finally:
         await manager.aclose()
+        if browser is not None:
+            await browser.aclose()
 
 
 def parse_args() -> argparse.Namespace:
@@ -322,6 +365,20 @@ def parse_args() -> argparse.Namespace:
         choices=COMMANDS,
     )
     parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help=(
+            "open notebook tabs in a managed Chromium that accepts Colab's MCP "
+            "dialog automatically. The first run needs a manual Google sign-in in "
+            "that window; the profile is reused afterwards."
+        ),
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="run the managed browser headless (only after signing in once)",
+    )
     return parser.parse_args()
 
 
@@ -334,10 +391,12 @@ def main() -> None:
         authenticate(config)
     elif args.command == "auth-check":
         check_auth(config)
+    elif args.command == "login":
+        asyncio.run(browser_login())
     elif args.command == "assignments":
         assignments(config)
     else:
-        asyncio.run(live_phase(config, args.command))
+        asyncio.run(live_phase(config, args.command, args.auto_approve, args.headless))
 
 
 if __name__ == "__main__":

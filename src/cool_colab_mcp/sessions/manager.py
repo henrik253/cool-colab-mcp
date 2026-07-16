@@ -30,9 +30,14 @@ class SessionManager:
     A None notebook_id targets the default session, preserving the single-notebook UX.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, browser=None) -> None:
         self._sessions: dict[str, NotebookSession] = {}
         self._create_lock = asyncio.Lock()
+        # Optional BrowserController: when set, notebook tabs are opened in a managed
+        # Chromium that auto-approves Colab's MCP dialog (plan.md §11). Without it we
+        # fall back to webbrowser.open_new and the user clicks Connect themselves.
+        # Its lifecycle belongs to whoever constructed it.
+        self.browser = browser
 
     def get(self, notebook_id: str | None = None) -> NotebookSession:
         """The existing session for notebook_id; raises a structured error otherwise."""
