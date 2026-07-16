@@ -79,6 +79,11 @@ KEYRING_TOKEN_ACCOUNT = "google-oauth-token"
 # Persistent browser profile directory under the base dir (storage.base_dir()).
 # Phase 1 groundwork only; Chromium profile management lands in Phase 2 (plan.md §10).
 BROWSER_PROFILE_DIR_NAME = "browser-profile"
+BROWSER_APPROVAL_ATTEMPTS = 3
+BROWSER_APPROVAL_TIMEOUT = 5.0  # secs per bounded popup-detection attempt
+BROWSER_RETRY_DELAY = 0.5  # secs between approval attempts
+COLAB_MCP_DIALOG_NAME = "Colab MCP"
+COLAB_MCP_APPROVE_BUTTON = "Continue"
 
 # Colab runtime API (ported from SebastianGilPinzon/colab-mcp, Apache 2.0).
 COLAB_RUNTIME_API = COLAB

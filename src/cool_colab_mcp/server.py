@@ -22,8 +22,9 @@ invisible tool, never a silent stub.
 
 import logging
 import webbrowser
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentContext
@@ -61,6 +62,17 @@ from cool_colab_mcp.utils import json_tool_result
 logger = logging.getLogger(__name__)
 
 
+class BrowserController(Protocol):
+    async def open_and_approve(
+        self,
+        notebook_id: str,
+        connection_url: str,
+        notebook_url: str,
+        token: str,
+        port: int,
+    ) -> None: ...
+
+
 def _status(session: NotebookSession, connected: bool, url: str | None) -> ToolResult:
     return json_tool_result(
         {
@@ -77,6 +89,7 @@ async def open_connection(
     notebook_id: str | None,
     ctx: Context,
     force_scratch: bool = False,
+    browser: BrowserController | None = None,
 ) -> ToolResult:
     """The one open flow: resolve the notebook, open the browser tab, await the
     frontend connection with progress reports. Shared by
@@ -115,10 +128,23 @@ async def open_connection(
         session.notebook_id,
         session.port,
     )
-    webbrowser.open_new(
+    connection_url = (
         f"{url}{separator}{TAB_DEDUP_PARAM}={session.port}"
         f"#{PROXY_TOKEN_PARAM}={session.token}&{PROXY_PORT_PARAM}={session.port}"
     )
+    try:
+        if browser is None:
+            webbrowser.open_new(connection_url)
+        else:
+            await browser.open_and_approve(
+                session.notebook_id,
+                connection_url,
+                url,
+                session.token,
+                session.port,
+            )
+    except ToolFailed as failure:
+        return failure.error.as_result()
     await ctx.report_progress(
         progress=1, total=3, message=f"Opened Colab notebook: {url}"
     )
@@ -149,7 +175,9 @@ async def open_connection(
 
 
 def build_server(
-    manager: SessionManager, oauth_config_path: Path | None = None
+    manager: SessionManager,
+    oauth_config_path: Path | None = None,
+    browser: BrowserController | None = None,
 ) -> FastMCP:
     """Create the root server and pre-register the whole tool surface."""
     mcp = FastMCP(
@@ -202,7 +230,9 @@ def build_server(
 
         Waits up to 60s for the user's browser tab to connect and reports progress.
         """
-        return await open_connection(manager, notebook_url, notebook_id, ctx)
+        return await open_connection(
+            manager, notebook_url, notebook_id, ctx, browser=browser
+        )
 
     @mcp.tool
     async def add_code_cell(
@@ -276,7 +306,7 @@ def build_server(
             MOVE_CELL, {"cellId": cellId, "cellIndex": cellIndex}, notebook_id
         )
 
-    register_registry_tools(mcp, manager, open_connection)
+    register_registry_tools(mcp, manager, partial(open_connection, browser=browser))
     register_snapshot_tools(mcp, manager)
     register_transfer_tools(mcp, manager)
     register_runtime_tools(mcp, manager, oauth_config_path)

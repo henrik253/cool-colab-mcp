@@ -64,6 +64,15 @@ class TestParseArgs:
         assert cool_colab_mcp.parse_args(["--list-running"]).list_running is True
         assert cool_colab_mcp.parse_args(["--kill-stale"]).kill_stale is True
 
+    def test_managed_browser_flags(self):
+        args = cool_colab_mcp.parse_args(["--managed-browser", "--headless"])
+        assert args.managed_browser is True
+        assert args.headless is True
+
+    def test_headless_requires_managed_browser(self):
+        with pytest.raises(SystemExit):
+            cool_colab_mcp.parse_args(["--headless"])
+
 
 class TestListRunning:
     def test_prints_entries_and_exits_before_serving(

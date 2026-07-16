@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import webbrowser
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_asyncio
@@ -28,6 +28,7 @@ from cool_colab_mcp.constants import (
     SCRATCH_PATH,
     TAB_DEDUP_PARAM,
 )
+from cool_colab_mcp.errors import fail
 from cool_colab_mcp.server import build_server
 from cool_colab_mcp.sessions.manager import SessionManager
 
@@ -185,6 +186,41 @@ class TestStaticToolSurface:
 
 
 class TestOpenColabBrowserConnection:
+    @pytest.mark.asyncio
+    async def test_managed_browser_opens_and_approves_without_system_browser(
+        self, manager, mock_webbrowser
+    ):
+        browser = Mock(open_and_approve=AsyncMock())
+        managed_server = build_server(manager, browser=browser)
+
+        async with Client(managed_server) as client:
+            await client.call_tool(
+                "open_colab_browser_connection", {"notebook_url": DRIVE_URL}
+            )
+
+        session = manager.get()
+        browser.open_and_approve.assert_awaited_once()
+        args = browser.open_and_approve.await_args.args
+        assert args[0] == "default"
+        assert args[2:] == (DRIVE_URL, session.token, session.port)
+        mock_webbrowser.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_managed_browser_failure_is_structured(self, manager):
+        browser = Mock(
+            open_and_approve=AsyncMock(
+                side_effect=fail("user_action_required", "approval unavailable")
+            )
+        )
+        managed_server = build_server(manager, browser=browser)
+
+        async with Client(managed_server) as client:
+            result = await client.call_tool(
+                "open_colab_browser_connection", {"notebook_url": DRIVE_URL}
+            )
+
+        assert result.structured_content["error"]["kind"] == "user_action_required"
+
     @pytest.mark.asyncio
     async def test_explicit_url_opens_tab_and_becomes_active(
         self, server, manager, mock_webbrowser

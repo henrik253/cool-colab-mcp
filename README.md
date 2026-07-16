@@ -26,7 +26,8 @@ This is an improved fork of [googlecolab/colab-mcp](https://github.com/googlecol
 | Files into the runtime | Manual browser upload | Chunked upload to `/content` with SHA-256 verification |
 | CPU/GPU switching | Removed upstream | OAuth runtime API (T4 / L4 / A100 / TPU) |
 | Tools visible at startup | No — requires `tools/list_changed` | Pre-registered tool surface |
-| Headless server operation | No | Managed Chromium via Playwright (Phase 2) |
+| Automatic MCP popup approval | No | Verified managed Chromium flow (opt-in) |
+| Headless server operation | No | Managed Chromium groundwork; crash recovery remains Phase 2 |
 
 Reliability fixes are cherry-picked with attribution from the
 [SebastianGilPinzon/colab-mcp](https://github.com/SebastianGilPinzon/colab-mcp) fork
@@ -82,6 +83,26 @@ uv sync --group dev          # install deps
 uv run pytest                # run tests
 uv run pre-commit install    # once per clone
 ```
+
+### Skip the Colab MCP popup with managed Chromium
+
+Install Playwright's Chromium once, then add `--managed-browser` to the MCP server arguments:
+
+```bash
+uv run playwright install chromium
+uv run cool-colab-mcp --managed-browser
+```
+
+The first run uses a visible browser so you can sign in to Google. That login is retained in
+`$COOL_COLAB_MCP_HOME/browser-profile` (by default `~/.cool-colab-mcp/browser-profile`). Later
+runs reuse the profile. After the profile is authenticated, `--managed-browser --headless` can
+run without a visible window.
+
+Managed browsing does not modify Colab's frontend JavaScript. Before clicking, it verifies the
+Colab origin, requested notebook path, and the exact WebSocket token and port created for that
+notebook session. It clicks only `Continue` inside the named `Colab MCP` dialog. If Colab changes
+that dialog, the tool returns `user_action_required` and asks for manual approval instead of
+clicking a generic consent control.
 
 To use notebooks directly from a repository, allow only that repository (or its notebook
 directory), register the local path, and sync back before closing the session:

@@ -30,8 +30,9 @@ the integration refactor sweep are complete.
 | Three-notebook live demo | manual verification | — | 🟡 OAuth, tab opening, CPU execution, and uploads verified; T4 verification remains |
 | Local repository notebook sync | 5a | — | ✅ **Merged** to `integration` (PR #12, `0d6b419`) |
 | Live Colab compatibility + output sync | 1/2/8/11 | — | ✅ **Merged** to `integration` (PR #14, `c95bdf3`) |
+| Managed browser + MCP popup approval | 12/13 | `feature/browser-popup-approval` | ✅ Built and locally verified; PR pending |
 
-Final integration PR #15 is open with green CI. The live demo verified OAuth, three-tab opening,
+Integration PR #15 is merged to `main`. The live demo verified OAuth, three-tab opening,
 CPU execution, and direct uploads; its T4 runtime verification remains incomplete. Section 1
 remains open until the full end-to-end path and complete manual setup documentation are finished.
 
@@ -465,7 +466,38 @@ snapshot/bootstrap/checkpoint orchestration remains Phase 2 (§14).
 # Phase 2 (plan.md §10–15)
 
 ## 12. Playwright browser management
+
+- [x] Opt-in `--managed-browser` launches Chromium through Playwright with the persistent
+      profile under `COOL_COLAB_MCP_HOME`; `--headless` is available for an already-authenticated
+      profile
+- [x] Reuse one managed browser context and map a distinct page to each `notebook_id`
+- [x] Preserve the system-browser path when managed browsing is not enabled
+- [ ] Reopen registered tabs and reconnect sessions after a browser crash
+- [ ] Detect Google login, consent, quota, and Colab error pages
+
+**Tests:** `browser_controller_test.py` (`test_persistent_context_and_page_reused`,
+`test_distinct_notebooks_get_distinct_pages`, `test_missing_chromium_is_actionable`),
+`server_test.py::TestOpenColabBrowserConnection::test_managed_browser_opens_and_approves_without_system_browser`,
+`registry_tools_test.py::TestOpenNotebook::test_registered_notebook_uses_managed_browser`,
+`cli_test.py::TestParseArgs` (`test_managed_browser_flags`,
+`test_headless_requires_managed_browser`)
+
 ## 13. Automated MCP popup approval
+
+- [x] Verify the exact Colab origin and requested notebook path before approval
+- [x] Verify the session's exact WebSocket token and port before approval; never expose either
+      value in tool failures or logs
+- [x] Click only the exact `Continue` button inside the named `Colab MCP` dialog—never a generic
+      approval or consent control, and never by injecting JavaScript into the frontend
+- [x] Use bounded popup-detection retries, then wait for the existing WebSocket connection signal
+- [x] Return structured `user_action_required` when Chromium cannot start, navigation fails, or
+      the verified dialog cannot be found after a Colab UI change
+
+**Tests:** `browser_approval_test.py` (`test_verified_page_accepts_exact_session`,
+`test_unverified_page_is_actionable_and_leaks_no_token` (origin, notebook, token, and port cases),
+`test_clicks_only_continue_inside_named_dialog`, `test_changed_ui_returns_user_action_required`),
+`server_test.py::TestOpenColabBrowserConnection::test_managed_browser_failure_is_structured`
+
 ## 14. Automated runtime-switch orchestration (snapshot → switch → verify → restore)
 ## 15. Headless deployment and recovery
 

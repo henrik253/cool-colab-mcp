@@ -14,7 +14,7 @@
 
 import json
 import webbrowser
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_asyncio
@@ -468,6 +468,21 @@ class TestGetNotebookStatus:
 
 
 class TestOpenNotebook:
+    @pytest.mark.asyncio
+    async def test_registered_notebook_uses_managed_browser(
+        self, manager, mock_webbrowser
+    ):
+        registered()
+        browser = Mock(open_and_approve=AsyncMock())
+        server = build_server(manager, browser=browser)
+
+        async with Client(server) as client:
+            await client.call_tool("open_notebook", {"notebook_id": "training"})
+
+        browser.open_and_approve.assert_awaited_once()
+        assert browser.open_and_approve.await_args.args[0] == "training"
+        mock_webbrowser.assert_not_called()
+
     @pytest.mark.asyncio
     async def test_opens_registered_url_and_names_session(
         self, server, manager, mock_webbrowser

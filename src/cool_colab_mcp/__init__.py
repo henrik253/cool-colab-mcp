@@ -22,6 +22,7 @@ import tempfile
 from pathlib import Path
 
 from cool_colab_mcp import doctor, process_registry
+from cool_colab_mcp.browser import ManagedBrowser
 from cool_colab_mcp.constants import LOG_DIR_PREFIX
 from cool_colab_mcp.logging_setup import init_logging
 from cool_colab_mcp.server import build_server
@@ -39,6 +40,16 @@ def parse_args(v: list[str]) -> argparse.Namespace:
         "--client-oauth-config",
         type=Path,
         help="OAuth Desktop-app client-secrets JSON for runtime switching",
+    )
+    parser.add_argument(
+        "--managed-browser",
+        action="store_true",
+        help="open notebooks in persistent Chromium and approve verified Colab MCP dialogs",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="run managed Chromium headlessly (requires --managed-browser)",
     )
     parser.add_argument(
         "-l",
@@ -71,7 +82,10 @@ def parse_args(v: list[str]) -> argparse.Namespace:
         help="check the local environment (versions, directories, port binding) "
         "and report each item as pass/fail",
     )
-    return parser.parse_args(v)
+    args = parser.parse_args(v)
+    if args.headless and not args.managed_browser:
+        parser.error("--headless requires --managed-browser")
+    return args
 
 
 def print_running() -> None:
@@ -107,10 +121,13 @@ async def main_async(args: argparse.Namespace | None = None) -> None:
     # Entries from crashed runs would otherwise accumulate forever.
     process_registry.prune_dead()
     manager = SessionManager()
+    browser = ManagedBrowser(headless=args.headless) if args.managed_browser else None
     try:
-        await build_server(manager, args.client_oauth_config).run_async()
+        await build_server(manager, args.client_oauth_config, browser).run_async()
     finally:
         await manager.aclose()
+        if browser is not None:
+            await browser.aclose()
 
 
 def main() -> None:
