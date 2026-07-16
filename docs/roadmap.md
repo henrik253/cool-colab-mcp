@@ -1,8 +1,8 @@
 # Roadmap
 
 Progress tracker for [plan.md](plan.md). One section per feature, in the order of plan.md §17.
-Rules: check bullets as they land; every feature lists the test cases that cover it; update this
-file in the same branch as the feature itself.
+Rules: check completed bullets in the same commit that completes their implementation; every
+feature lists the test cases that cover it; never defer the roadmap update to a follow-up PR.
 
 Feature PRs target the `integration` branch (see CLAUDE.md "Integration → main"). Because they
 overlap heavily, sections 3, 6, and 7 (+ the package rename and tool pre-registration) are
@@ -12,8 +12,9 @@ Status legend: `[ ]` open · `[x]` done
 
 ## Wave status (snapshot 2026-07-15)
 
-Per-section bullets below are checked only once their branch **merges into `integration`**.
-All Phase 1 feature branches and the integration refactor sweep are complete.
+Per-section bullets are checked in the feature's completing commit. The table distinguishes
+committed, PR, and merged state where that difference matters. All Phase 1 feature branches and
+the integration refactor sweep are complete.
 
 | Feature | Section | Branch | State |
 |---|---|---|---|
@@ -26,12 +27,13 @@ All Phase 1 feature branches and the integration refactor sweep are complete.
 | Direct file upload | 10 | — | ✅ **Merged** to `integration` (PR #8, `129ac72`) |
 | Runtime control | 11 | — | ✅ **Merged** to `integration` (PR #9, `b809019`) |
 | Integration refactor | — | `integration` | ✅ Combined `main...integration` sweep complete |
-| Three-notebook live demo | manual verification | `feature/three-notebook-demo` | 🟡 Harness complete; live Colab/OAuth execution required |
+| Three-notebook live demo | manual verification | — | 🟡 OAuth, tab opening, CPU execution, and uploads verified; T4 verification remains |
 | Local repository notebook sync | 5a | — | ✅ **Merged** to `integration` (PR #12, `0d6b419`) |
+| Live Colab compatibility + output sync | 1/2/8/11 | — | ✅ **Merged** to `integration` (PR #14, `c95bdf3`) |
 
-Final integration PR #10 is open with green CI. Before merging it, run the three-notebook live
-demo to exercise the real multi-session/auth/runtime/upload path. Section 1 remains open until
-its separate cell-response and complete manual-setup checks are also finished.
+Final integration PR #15 is open with green CI. The live demo verified OAuth, three-tab opening,
+CPU execution, and direct uploads; its T4 runtime verification remains incomplete. Section 1
+remains open until the full end-to-end path and complete manual setup documentation are finished.
 
 ---
 
