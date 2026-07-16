@@ -102,6 +102,7 @@ async def open_connection(
             return _status(session, connected=True, url=session.active_notebook_url)
         if force_scratch:
             session.active_notebook_url = notebook_url
+            session.set_output_cache_url(notebook_url)
             url = notebook_url
         else:
             url = session.resolve_notebook_url(notebook_url)

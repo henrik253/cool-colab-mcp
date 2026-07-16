@@ -314,6 +314,8 @@ over every instrumented module), `TestNamespacedLoggers::test_registry_failure_u
 - [x] Tools: `create_snapshot`, `list_snapshots`, `restore_snapshot`, `export_notebook`
 - [x] Snapshots are valid `.ipynb` files
 - [x] Snapshots survive server restart
+- [x] Outputs returned by live `run_code_cell` calls are cached per session and merged
+      into snapshots/exports when Colab's later `get_cells` payload omits them
 
 **Tests:** `snapshot_manager_test.py`
 (`test_notebook_document_preserves_cells_metadata_and_outputs`,
@@ -330,6 +332,7 @@ over every instrumented module), `TestNamespacedLoggers::test_registry_failure_u
 `test_list_filesystem_failure_is_structured`, `test_export_requires_ipynb_suffix`,
 `test_export_writes_valid_notebook`) and `snapshots_tools_test.py`
 (`test_create_snapshot_writes_valid_ipynb`,
+`test_create_snapshot_merges_cached_outputs_when_frontend_omits_them`,
 `test_create_snapshot_stores_recovery_metadata`,
 `test_create_snapshot_disconnected_is_structured`,
 `test_create_snapshot_unknown_notebook_is_structured`,
@@ -341,10 +344,18 @@ over every instrumented module), `TestNamespacedLoggers::test_registry_failure_u
 `test_restore_disconnected_is_structured`,
 `test_restore_unknown_notebook_is_structured`,
 `test_export_notebook_writes_current_cells`,
+`test_export_merges_outputs_returned_by_run_cell`,
+`test_export_keeps_fresh_frontend_outputs_over_cached_outputs`,
 `test_export_bad_destination_is_structured`,
 `test_export_disconnected_is_structured`,
 `test_export_unknown_notebook_is_structured`,
-`test_export_filesystem_failure_is_structured`)
+`test_export_filesystem_failure_is_structured`) and `session_test.py`
+(`TestResolveNotebookUrl::test_explicit_url_replaces_previous_active`,
+`TestResolveNotebookUrl::test_reconnect_same_url_keeps_cached_outputs`,
+`TestResolveNotebookUrl::test_fallback_to_explicit_url_clears_cached_outputs`,
+`TestRunCode::test_happy_path`,
+`TestRunCode::test_public_run_code_cell_caches_outputs_for_persistence`,
+`TestRunCode::test_cached_code_outputs_never_merge_into_markdown`)
 
 ## 9. Persistent authentication (plan.md §3)
 
