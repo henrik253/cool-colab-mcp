@@ -411,7 +411,11 @@ exception chains)
 ## 11. Runtime status, profiles, and API-based switching (plan.md §8)
 
 - [x] Tools: `get_runtime_status`, `connect_runtime`, `disconnect_runtime`, `stop_runtime`, `restart_runtime`, `request_runtime_profile`
-- [x] CPU/GPU switching via the OAuth runtime API (`colab.pa.googleapis.com`), incl. quota/denial outcomes as structured results
+- [x] CPU/GPU switching via the OAuth-authenticated Colab runtime API, including
+      quota/denial outcomes as structured results
+- [x] Live verification corrected `/tun/m` assignment routing to
+      `colab.research.google.com` with `authuser=0` (the `colab.pa.googleapis.com`
+      origin returns HTML 404 for these routes)
 - [ ] Pre-stop save/snapshot/manifest sequence; post-connect verify/restore sequence
 
 Phase-1 boundary: destructive tools require caller-confirmed external notebook/snapshot/log/

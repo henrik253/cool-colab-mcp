@@ -31,6 +31,15 @@ def test_list_assignments_strips_xssi(client):
     assert runtime.list_assignments() == [{"endpoint": "vm-1"}]
 
 
+def test_assignment_routes_use_colab_origin_and_auth_user(client):
+    runtime, session = client
+    session.request.return_value = response('{"assignments":[]}')
+    runtime.list_assignments()
+    args, kwargs = session.request.call_args
+    assert args == ("GET", "https://colab.research.google.com/tun/m/assignments")
+    assert kwargs["params"] == {"authuser": "0"}
+
+
 def test_quota_denial_is_structured(client):
     runtime, session = client
     session.request.return_value = response(

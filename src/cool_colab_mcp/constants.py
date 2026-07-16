@@ -81,7 +81,9 @@ KEYRING_TOKEN_ACCOUNT = "google-oauth-token"
 BROWSER_PROFILE_DIR_NAME = "browser-profile"
 
 # Colab runtime API (ported from SebastianGilPinzon/colab-mcp, Apache 2.0).
-COLAB_RUNTIME_API = "https://colab.pa.googleapis.com"
+COLAB_RUNTIME_API = COLAB
+COLAB_AUTH_USER_PARAM = "authuser"
+COLAB_AUTH_USER = "0"
 RUNTIME_ASSIGN_PATH = "/tun/m/assign"
 RUNTIME_ASSIGNMENTS_PATH = "/tun/m/assignments"
 RUNTIME_UNASSIGN_PATH_PREFIX = "/tun/m/unassign/"

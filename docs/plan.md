@@ -347,7 +347,8 @@ project-file, and checkpoint restoration is Phase 2 (section 12).
 ### Implementation
 
 Runtime-type changes use the OAuth-authenticated Colab runtime API
-(`colab.pa.googleapis.com`), as proven by the reference fork's `change_runtime` tool.
+(`/tun/m` routes on `colab.research.google.com`), as proven by the reference fork's
+`change_runtime` tool and confirmed by live verification.
 It supports assigning T4 / L4 / A100 / TPU variants or NONE (CPU) and surfaces quota
 and denial outcomes (`QUOTA_DENIED`, `DENYLISTED`, ...) as structured results. Browser
 automation is **not** required for runtime switching — this moves CPU/GPU switching
