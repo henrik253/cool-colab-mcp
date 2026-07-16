@@ -34,6 +34,9 @@ from cool_colab_mcp.constants import (
     ADD_CODE_CELL,
     ADD_TEXT_CELL,
     DELETE_CELL,
+    DEFAULT_CODE_CELL_INDEX,
+    DEFAULT_CODE_LANGUAGE,
+    DEFAULT_TEXT_CELL_INDEX,
     GET_CELLS,
     MOVE_CELL,
     PROXY_PORT_PARAM,
@@ -99,6 +102,7 @@ async def open_connection(
             return _status(session, connected=True, url=session.active_notebook_url)
         if force_scratch:
             session.active_notebook_url = notebook_url
+            session.set_output_cache_url(notebook_url)
             url = notebook_url
         else:
             url = session.resolve_notebook_url(notebook_url)
@@ -203,8 +207,8 @@ def build_server(
     @mcp.tool
     async def add_code_cell(
         code: str,
-        cellIndex: int | None = None,
-        language: str | None = None,
+        cellIndex: int = DEFAULT_CODE_CELL_INDEX,
+        language: str = DEFAULT_CODE_LANGUAGE,
         notebook_id: str | None = None,
     ) -> ToolResult:
         """Add a new code cell to the Colab notebook. Requires an active connection
@@ -219,7 +223,7 @@ def build_server(
     @mcp.tool
     async def add_text_cell(
         content: str,
-        cellIndex: int | None = None,
+        cellIndex: int = DEFAULT_TEXT_CELL_INDEX,
         notebook_id: str | None = None,
     ) -> ToolResult:
         """Add a new text/markdown cell to the Colab notebook. Requires an active

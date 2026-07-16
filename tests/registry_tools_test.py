@@ -246,7 +246,7 @@ class TestLocalNotebookSync:
             -1
         ].args == (
             "add_code_cell",
-            {"code": "x = 1", "cellIndex": 0},
+            {"code": "x = 1", "cellIndex": 0, "language": "python"},
         )
 
     @pytest.mark.asyncio
@@ -270,7 +270,7 @@ class TestLocalNotebookSync:
         assert result.structured_content["direction"] == "to_colab"
         assert session.proxy_client.call_tool.call_args_list[-1].args == (
             "add_code_cell",
-            {"code": "x = 1", "cellIndex": 0},
+            {"code": "x = 1", "cellIndex": 0, "language": "python"},
         )
 
     @pytest.mark.asyncio

@@ -13,6 +13,8 @@ from google.oauth2.credentials import Credentials
 
 from cool_colab_mcp.constants import (
     COLAB_CLIENT_AGENT,
+    COLAB_AUTH_USER,
+    COLAB_AUTH_USER_PARAM,
     COLAB_RUNTIME_API,
     RUNTIME_ASSIGN_PATH,
     RUNTIME_ASSIGNMENTS_PATH,
@@ -81,9 +83,17 @@ class RuntimeClient:
             "X-Goog-Colab-Client-Agent": COLAB_CLIENT_AGENT,
             **kwargs.pop("headers", {}),
         }
+        params = {
+            COLAB_AUTH_USER_PARAM: COLAB_AUTH_USER,
+            **kwargs.pop("params", {}),
+        }
         try:
             response = self.session.request(
-                method, f"{COLAB_RUNTIME_API}{path}", headers=headers, **kwargs
+                method,
+                f"{COLAB_RUNTIME_API}{path}",
+                headers=headers,
+                params=params,
+                **kwargs,
             )
         except Exception:
             raise fail(

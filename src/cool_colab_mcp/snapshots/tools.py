@@ -9,6 +9,7 @@ from cool_colab_mcp.constants import (
     ADD_CODE_CELL,
     ADD_TEXT_CELL,
     DELETE_CELL,
+    DEFAULT_CODE_LANGUAGE,
     DEFAULT_NOTEBOOK_ID,
     GET_CELLS,
 )
@@ -31,10 +32,13 @@ async def capture_document(session: NotebookSession) -> dict[str, Any]:
     result = await session.call_tool(GET_CELLS, {})
     if result.structured_content is None:
         raise fail("protocol_error", "get_cells returned no structured notebook data.")
-    return notebook_document(_cells(result.structured_content))
+    return notebook_document(
+        session.merge_cached_outputs(_cells(result.structured_content))
+    )
 
 
 async def restore_document(session: NotebookSession, document: dict[str, Any]) -> None:
+    session.cell_outputs.clear()
     current = await session.call_tool(GET_CELLS, {})
     current_cells = _cells(current.structured_content or {})
     if not isinstance(current_cells, list):
@@ -50,7 +54,10 @@ async def restore_document(session: NotebookSession, document: dict[str, Any]) -
             source = "".join(source)
         tool = ADD_TEXT_CELL if cell.get("cell_type") == "markdown" else ADD_CODE_CELL
         key = "content" if tool == ADD_TEXT_CELL else "code"
-        await session.call_tool(tool, {key: source, "cellIndex": index})
+        args = {key: source, "cellIndex": index}
+        if tool == ADD_CODE_CELL:
+            args["language"] = DEFAULT_CODE_LANGUAGE
+        await session.call_tool(tool, args)
 
 
 def register_snapshot_tools(mcp: FastMCP, sessions: SessionManager) -> None:
@@ -66,7 +73,7 @@ def register_snapshot_tools(mcp: FastMCP, sessions: SessionManager) -> None:
                 "protocol_error", "get_cells returned no structured notebook data."
             )
         return session.notebook_id, notebook_document(
-            _cells(result.structured_content), recovery
+            session.merge_cached_outputs(_cells(result.structured_content)), recovery
         )
 
     @mcp.tool

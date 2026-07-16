@@ -64,8 +64,25 @@ class TestResolveNotebookUrl:
     def test_explicit_url_replaces_previous_active(self):
         nb_session = make_session()
         nb_session.resolve_notebook_url(DRIVE_URL)
+        nb_session.cell_outputs["shared-id"] = [{"output_type": "stream"}]
         assert nb_session.resolve_notebook_url(GITHUB_URL) == GITHUB_URL
         assert nb_session.active_notebook_url == GITHUB_URL
+        assert nb_session.cell_outputs == {}
+
+    def test_reconnect_same_url_keeps_cached_outputs(self):
+        nb_session = make_session()
+        nb_session.resolve_notebook_url(DRIVE_URL)
+        nb_session.cell_outputs["cell"] = []
+        nb_session.resolve_notebook_url(DRIVE_URL)
+        assert nb_session.cell_outputs == {"cell": []}
+
+    def test_fallback_to_explicit_url_clears_cached_outputs(self, monkeypatch):
+        monkeypatch.setenv(NOTEBOOK_URL_ENV, f"{COLAB}/drive/env-pin")
+        nb_session = make_session()
+        nb_session.resolve_notebook_url(None)
+        nb_session.cell_outputs["shared-id"] = []
+        nb_session.resolve_notebook_url(DRIVE_URL)
+        assert nb_session.cell_outputs == {}
 
     def test_active_notebook_reused_without_parameter(self):
         nb_session = make_session()
@@ -165,16 +182,20 @@ class TestRunCode:
     @pytest.mark.asyncio
     async def test_happy_path(self):
         proxy = mock_proxy_client(
-            [fake_raw_result({"cellId": "c-1"}), fake_raw_result({"output": "42"})]
+            [
+                fake_raw_result({"newCellId": "c-1"}),
+                fake_raw_result({"output": "42", "outputs": []}),
+            ]
         )
         nb_session = make_session(proxy)
 
         result = await nb_session.run_code("6*7")
 
-        assert result == {"output": "42"}
+        assert result == {"output": "42", "outputs": []}
+        assert nb_session.cell_outputs == {"c-1": []}
         assert proxy.call_tool.await_args_list[0].args == (
             "add_code_cell",
-            {"code": "6*7"},
+            {"code": "6*7", "cellIndex": 0, "language": "python"},
         )
         assert proxy.call_tool.await_args_list[1].args == (
             "run_code_cell",
@@ -182,14 +203,29 @@ class TestRunCode:
         )
 
     @pytest.mark.asyncio
+    async def test_public_run_code_cell_caches_outputs_for_persistence(self):
+        outputs = [{"output_type": "stream", "name": "stdout", "text": ["saved\n"]}]
+        session = make_session(
+            mock_proxy_client([fake_raw_result({"outputs": outputs})])
+        )
+        await session.call_tool("run_code_cell", {"cellId": "live-cell"})
+        assert session.cell_outputs == {"live-cell": outputs}
+
+    def test_cached_code_outputs_never_merge_into_markdown(self):
+        session = make_session()
+        session.cell_outputs["shared-id"] = []
+        cells = [{"cellId": "shared-id", "type": "text", "content": "# Notes"}]
+        assert session.merge_cached_outputs(cells) == cells
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "add_result",
         [
-            fake_raw_result({"result": {"cell_id": "c-1"}}),
-            fake_raw_result(None, text='{"id": "c-1"}'),
+            fake_raw_result({"newCellId": "c-1"}),
+            fake_raw_result(None, text='{"newCellId": "c-1"}'),
         ],
     )
-    async def test_cell_id_parsed_from_wrapper_or_text(self, add_result):
+    async def test_verified_cell_id_parsed_from_structured_or_text(self, add_result):
         proxy = mock_proxy_client([add_result, fake_raw_result({"output": "ok"})])
 
         await make_session(proxy).run_code("pass")
@@ -199,7 +235,7 @@ class TestRunCode:
     @pytest.mark.asyncio
     async def test_unstructured_run_result_returned_as_text(self):
         proxy = mock_proxy_client(
-            [fake_raw_result({"cellId": "c-1"}), fake_raw_result(None, text="done")]
+            [fake_raw_result({"newCellId": "c-1"}), fake_raw_result(None, text="done")]
         )
         assert await make_session(proxy).run_code("pass") == {"text": "done"}
 
@@ -213,7 +249,7 @@ class TestRunCode:
     @pytest.mark.asyncio
     async def test_proxy_failure_propagates(self):
         proxy = mock_proxy_client(
-            [fake_raw_result({"cellId": "c-1"}), ValueError("boom")]
+            [fake_raw_result({"newCellId": "c-1"}), ValueError("boom")]
         )
         with pytest.raises(ValueError, match="boom"):
             await make_session(proxy).run_code("pass")

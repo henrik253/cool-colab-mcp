@@ -33,12 +33,13 @@ from mcp.types import TextContent
 
 from cool_colab_mcp.constants import (
     ADD_CODE_CELL,
+    DEFAULT_CODE_CELL_INDEX,
+    DEFAULT_CODE_LANGUAGE,
     CELL_ID_KEYS,
     COLAB,
     DRIVE_PATH_PREFIX,
     GITHUB_PATH_PREFIX,
     NOTEBOOK_URL_ENV,
-    RESULT_KEY,
     RUN_CODE_CELL,
     SCRATCH_PATH,
     UI_CONNECTION_TIMEOUT,
@@ -143,6 +144,8 @@ class NotebookSession:
         self.active_notebook_url: str | None = None
         self.wss: ColabWebSocketServer | None = None
         self.proxy_client: ColabProxyClient | None = None
+        self.cell_outputs: dict[str, list[Any]] = {}
+        self._output_cache_url: str | None = None
         self._exit_stack = AsyncExitStack()
 
     async def start(self) -> None:
@@ -179,15 +182,27 @@ class NotebookSession:
         An explicit URL becomes the session's active notebook, so reconnects return to it.
         """
         if notebook_url is not None:
-            self.active_notebook_url = validate_notebook_url(notebook_url)
-        if self.active_notebook_url:
-            return self.active_notebook_url
-        return os.environ.get(NOTEBOOK_URL_ENV) or f"{COLAB}{SCRATCH_PATH}"
+            resolved = validate_notebook_url(notebook_url)
+            self.active_notebook_url = resolved
+        resolved = (
+            self.active_notebook_url
+            or os.environ.get(NOTEBOOK_URL_ENV)
+            or f"{COLAB}{SCRATCH_PATH}"
+        )
+        self.set_output_cache_url(resolved)
+        return resolved
+
+    def set_output_cache_url(self, url: str) -> None:
+        """Bind cached execution outputs to the notebook currently using this session."""
+        if self._output_cache_url is not None and url != self._output_cache_url:
+            self.cell_outputs.clear()
+        self._output_cache_url = url
 
     async def call_tool(self, name: str, args: dict[str, Any]) -> ToolResult:
         """Forward a notebook tool call to the frontend, serialized by the session lock."""
         async with self.lock:
             raw = await self._call(name, args)
+            self._remember_cell_outputs(name, args, raw)
         return ToolResult(
             content=raw.content, structured_content=raw.structured_content
         )
@@ -198,11 +213,53 @@ class NotebookSession:
         Uploads, snapshots, and runtime checks build on this.
         """
         async with self.lock:
-            added = await self._call(ADD_CODE_CELL, {"code": code})
-            ran = await self._call(RUN_CODE_CELL, {"cellId": _extract_cell_id(added)})
+            added = await self._call(
+                ADD_CODE_CELL,
+                {
+                    "code": code,
+                    "cellIndex": DEFAULT_CODE_CELL_INDEX,
+                    "language": DEFAULT_CODE_LANGUAGE,
+                },
+            )
+            cell_id = _extract_cell_id(added)
+            args = {"cellId": cell_id}
+            ran = await self._call(RUN_CODE_CELL, args)
+            self._remember_cell_outputs(RUN_CODE_CELL, args, ran)
         if ran.structured_content is not None:
             return ran.structured_content
         return {"text": _text_of(ran)}
+
+    def merge_cached_outputs(self, cells: Any) -> Any:
+        """Fill only output fields omitted by the live get_cells response."""
+        if not isinstance(cells, list):
+            return cells
+        merged = []
+        for cell in cells:
+            if (
+                not isinstance(cell, dict)
+                or cell.get("type", cell.get("cell_type", "code")) != "code"
+                or "outputs" in cell
+            ):
+                merged.append(cell)
+                continue
+            cell_id = cell.get("id", cell.get("cellId"))
+            if cell_id not in self.cell_outputs:
+                merged.append(cell)
+                continue
+            copy = dict(cell)
+            copy["outputs"] = self.cell_outputs[cell_id]
+            merged.append(copy)
+        return merged
+
+    def _remember_cell_outputs(
+        self, name: str, args: dict[str, Any], result: CallToolResult
+    ) -> None:
+        if name != RUN_CODE_CELL or not isinstance(result.structured_content, dict):
+            return
+        cell_id = args.get("cellId")
+        outputs = result.structured_content.get("outputs")
+        if isinstance(cell_id, str) and isinstance(outputs, list):
+            self.cell_outputs[cell_id] = outputs
 
     async def _call(self, name: str, args: dict[str, Any]) -> CallToolResult:
         if not self.is_connected():
@@ -244,13 +301,13 @@ def _text_of(result: CallToolResult) -> str:
 
 
 def _cell_id_in(data: Any) -> str | None:
-    """Look for a cell id at the top level or nested under a "result" wrapper."""
+    """Read the cell id from the verified Colab add_code_cell response."""
     if not isinstance(data, dict):
         return None
     for key in CELL_ID_KEYS:
         if isinstance(data.get(key), str):
             return data[key]
-    return _cell_id_in(data.get(RESULT_KEY))
+    return None
 
 
 def _extract_cell_id(result: CallToolResult) -> str:

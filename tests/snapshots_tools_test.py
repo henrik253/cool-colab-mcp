@@ -48,6 +48,20 @@ async def test_create_snapshot_writes_valid_ipynb(server, manager):
 
 
 @pytest.mark.asyncio
+async def test_create_snapshot_merges_cached_outputs_when_frontend_omits_them(
+    server, manager
+):
+    cells = {"cells": [{"cellId": "c1", "type": "code", "content": "x = 1"}]}
+    session = await connect(manager, [fake_raw_result(cells)])
+    outputs = [{"output_type": "stream", "name": "stdout", "text": ["saved\n"]}]
+    session.cell_outputs["c1"] = outputs
+    async with Client(server) as client:
+        result = await client.call_tool("create_snapshot", {"notebook_id": "training"})
+    document = json.loads(open(result.structured_content["snapshot"]["path"]).read())
+    assert document["cells"][0]["outputs"] == outputs
+
+
+@pytest.mark.asyncio
 async def test_create_snapshot_stores_recovery_metadata(server, manager):
     await connect(manager, [fake_raw_result(CELLS)])
     async with Client(server) as client:
@@ -124,6 +138,7 @@ async def test_restore_snapshot_replaces_cells_in_order(server, manager):
             fake_raw_result(),
         ],
     )
+    session.cell_outputs["old"] = []
     async with Client(server) as client:
         made = await client.call_tool("create_snapshot", {"notebook_id": "training"})
         snapshot_id = made.structured_content["snapshot"]["snapshot_id"]
@@ -131,13 +146,14 @@ async def test_restore_snapshot_replaces_cells_in_order(server, manager):
             "restore_snapshot", {"notebook_id": "training", "snapshot_id": snapshot_id}
         )
     assert result.structured_content["restored"] == snapshot_id
+    assert session.cell_outputs == {}
     assert session.proxy_client.call_tool.call_args_list[2].args == (
         "delete_cell",
         {"cellId": "old"},
     )
     assert session.proxy_client.call_tool.call_args_list[3].args == (
         "add_code_cell",
-        {"code": "x = 1", "cellIndex": 0},
+        {"code": "x = 1", "cellIndex": 0, "language": "python"},
     )
     assert session.proxy_client.call_tool.call_args_list[4].args == (
         "add_text_cell",
@@ -190,6 +206,48 @@ async def test_export_notebook_writes_current_cells(server, manager, tmp_path):
         )
     assert result.structured_content["path"] == str(destination)
     assert json.loads(destination.read_text())["cells"][1]["source"] == "# Notes"
+
+
+@pytest.mark.asyncio
+async def test_export_merges_outputs_returned_by_run_cell(server, manager, tmp_path):
+    outputs = [{"output_type": "stream", "name": "stdout", "text": ["saved\n"]}]
+    cells_without_outputs = {
+        "cells": [
+            {key: value for key, value in CELLS["cells"][0].items() if key != "outputs"}
+        ]
+    }
+    await connect(
+        manager,
+        [fake_raw_result({"outputs": outputs}), fake_raw_result(cells_without_outputs)],
+    )
+    destination = tmp_path / "export.ipynb"
+    async with Client(server) as client:
+        await client.call_tool(
+            "run_code_cell", {"notebook_id": "training", "cellId": "c1"}
+        )
+        await client.call_tool(
+            "export_notebook",
+            {"notebook_id": "training", "destination": str(destination)},
+        )
+    assert json.loads(destination.read_text())["cells"][0]["outputs"] == outputs
+
+
+@pytest.mark.asyncio
+async def test_export_keeps_fresh_frontend_outputs_over_cached_outputs(
+    server, manager, tmp_path
+):
+    fresh = [{"output_type": "stream", "name": "stdout", "text": ["fresh\n"]}]
+    stale = [{"output_type": "stream", "name": "stdout", "text": ["stale\n"]}]
+    cells = {"cells": [{**CELLS["cells"][0], "outputs": fresh}]}
+    session = await connect(manager, [fake_raw_result(cells)])
+    session.cell_outputs["c1"] = stale
+    destination = tmp_path / "export.ipynb"
+    async with Client(server) as client:
+        await client.call_tool(
+            "export_notebook",
+            {"notebook_id": "training", "destination": str(destination)},
+        )
+    assert json.loads(destination.read_text())["cells"][0]["outputs"] == fresh
 
 
 @pytest.mark.asyncio
