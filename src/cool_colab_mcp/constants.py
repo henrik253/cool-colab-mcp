@@ -81,7 +81,9 @@ KEYRING_TOKEN_ACCOUNT = "google-oauth-token"
 BROWSER_PROFILE_DIR_NAME = "browser-profile"
 
 # Colab runtime API (ported from SebastianGilPinzon/colab-mcp, Apache 2.0).
-COLAB_RUNTIME_API = "https://colab.pa.googleapis.com"
+COLAB_RUNTIME_API = COLAB
+COLAB_AUTH_USER_PARAM = "authuser"
+COLAB_AUTH_USER = "0"
 RUNTIME_ASSIGN_PATH = "/tun/m/assign"
 RUNTIME_ASSIGNMENTS_PATH = "/tun/m/assignments"
 RUNTIME_UNASSIGN_PATH_PREFIX = "/tun/m/unassign/"
@@ -123,6 +125,9 @@ DIST_NAME = "cool-colab-mcp"
 MIN_PYTHON = (3, 13)
 
 # Notebook tools exposed by the Colab frontend, proxied per session
+DEFAULT_CODE_LANGUAGE = "python"
+DEFAULT_CODE_CELL_INDEX = 0
+DEFAULT_TEXT_CELL_INDEX = -1
 ADD_CODE_CELL = "add_code_cell"
 ADD_TEXT_CELL = "add_text_cell"
 GET_CELLS = "get_cells"
@@ -132,5 +137,4 @@ DELETE_CELL = "delete_cell"
 MOVE_CELL = "move_cell"
 
 # Keys under which frontend results may carry a cell id
-CELL_ID_KEYS = ("cellId", "cell_id", "id")
-RESULT_KEY = "result"
+CELL_ID_KEYS = ("newCellId",)

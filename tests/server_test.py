@@ -73,13 +73,21 @@ ALL_TOOLS = {
 }
 
 NOTEBOOK_TOOL_CALLS = [
-    ("add_code_cell", {"code": "1+1"}, {"code": "1+1"}),
+    (
+        "add_code_cell",
+        {"code": "1+1"},
+        {"code": "1+1", "cellIndex": 0, "language": "python"},
+    ),
     (
         "add_code_cell",
         {"code": "1+1", "cellIndex": 2, "language": "python"},
         {"code": "1+1", "cellIndex": 2, "language": "python"},
     ),
-    ("add_text_cell", {"content": "# hi"}, {"content": "# hi"}),
+    (
+        "add_text_cell",
+        {"content": "# hi"},
+        {"content": "# hi", "cellIndex": -1},
+    ),
     ("get_cells", {}, {}),
     ("run_code_cell", {"cellId": "c-1"}, {"cellId": "c-1"}),
     (

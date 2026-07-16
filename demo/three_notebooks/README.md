@@ -34,3 +34,21 @@ Runtime replacement requires explicit assignment endpoints. `prepare` prints the
 endpoints; identify the endpoint belonging to each notebook and add it to `config.local.json`.
 Do not guess: the wrong endpoint could stop another Colab runtime. GPU allocation can be denied
 by Colab quota or policy, and the demo must report that outcome instead of bypassing it.
+
+## Live verification findings
+
+The July 2026 live run confirmed the following frontend/runtime contracts:
+
+- `add_code_cell` requires numeric `cellIndex` and code `language`, and returns the new ID as
+  `{"newCellId": "..."}`;
+- OAuth runtime assignment routes are `/tun/m/...` on `colab.research.google.com` with
+  `authuser=0`;
+- Colab may return executed outputs from `run_code_cell` but omit them from a later `get_cells`;
+  Cool Colab MCP caches those outputs per live session and merges them during local sync;
+- three local files restored into scratch tabs can still map to one account assignment. Never
+  reuse one endpoint for several notebook IDs or claim independent runtimes without observing
+  distinct assignment endpoints.
+
+The current command phases are one-shot processes, so tabs disconnect when a phase finishes.
+A future persistent harness should keep one server alive across prepare, configure, upload,
+sync, and reopen verification to require only one MCP approval per tab.

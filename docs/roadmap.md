@@ -61,8 +61,8 @@ parallel branches and must share one persistence implementation. Covered by
 ## 1. Reproduce upstream workflow
 
 - [ ] Fork runs locally end-to-end against a real Colab notebook (manual verification)
-- [ ] Verify the real `add_code_cell` response shape and tighten `run_code`'s cell-id
-      parsing (`CELL_ID_KEYS` in constants.py) to the single verified key
+- [x] Verify the real `add_code_cell` response shape (`{"newCellId": "..."}`) and tighten
+      `run_code`'s cell-id parsing (`CELL_ID_KEYS` in constants.py) to that single key
 - [ ] Document the manual setup steps in README.md
 
 **Tests:** existing `session_test.py`, `websocket_server_test.py` pass. The live-demo harness is
@@ -77,7 +77,8 @@ covered offline by `demo/three_notebooks/demo_test.py`
 `test_verify_upload_accepts_two_cpu_and_one_t4`,
 `test_verify_upload_rejects_wrong_hardware` (CPU and T4 mismatch cases),
 `test_verify_upload_rejects_unverified_upload`,
-`test_structured_tool_failure_stops_demo_safely`)
+`test_structured_tool_failure_stops_demo_safely`); live response parsing is covered by
+`session_test.py::TestRunCode::test_verified_cell_id_parsed_from_structured_or_text`
 
 ## 2. Upstream reliability fixes (plan.md Phase 1 Baseline)
 
@@ -94,7 +95,11 @@ Port from [SebastianGilPinzon/colab-mcp](https://github.com/SebastianGilPinzon/c
 - [x] Unique `?p=<port>` notebook URL to prevent stale Chrome tab reuse
 - [x] Corrected Colab API signatures (`run_code_cell`/`cellId`, `move_cell`) — verified
       against the reference fork, the skeleton's schemas already match; `ColabClient`
-      init lands with the runtime API (§11, no such client exists here yet)
+      init lands with the runtime API (§11, no such client exists here yet). Live demo
+      verification additionally confirmed `add_code_cell.language` and `cellIndex` are
+      required. Public tools default to the reference indices (code `0`, text `-1`),
+      shared execution uses code index `0`, and restore paths send each document index;
+      every code path supplies the default `python` language.
 - [x] Stale-server process registry with detection and cleanup (`--list-running`,
       `--kill-stale`, prune on startup; one entry per WebSocket server via `storage.py`)
 - [x] Structured `not_connected` on mid-call WebSocket drop (today an unstructured
@@ -309,6 +314,8 @@ over every instrumented module), `TestNamespacedLoggers::test_registry_failure_u
 - [x] Tools: `create_snapshot`, `list_snapshots`, `restore_snapshot`, `export_notebook`
 - [x] Snapshots are valid `.ipynb` files
 - [x] Snapshots survive server restart
+- [x] Outputs returned by live `run_code_cell` calls are cached per session and merged
+      into snapshots/exports when Colab's later `get_cells` payload omits them
 
 **Tests:** `snapshot_manager_test.py`
 (`test_notebook_document_preserves_cells_metadata_and_outputs`,
@@ -336,6 +343,7 @@ over every instrumented module), `TestNamespacedLoggers::test_registry_failure_u
 `test_restore_disconnected_is_structured`,
 `test_restore_unknown_notebook_is_structured`,
 `test_export_notebook_writes_current_cells`,
+`test_export_merges_outputs_returned_by_run_cell`,
 `test_export_bad_destination_is_structured`,
 `test_export_disconnected_is_structured`,
 `test_export_unknown_notebook_is_structured`,
@@ -411,7 +419,11 @@ exception chains)
 ## 11. Runtime status, profiles, and API-based switching (plan.md §8)
 
 - [x] Tools: `get_runtime_status`, `connect_runtime`, `disconnect_runtime`, `stop_runtime`, `restart_runtime`, `request_runtime_profile`
-- [x] CPU/GPU switching via the OAuth runtime API (`colab.pa.googleapis.com`), incl. quota/denial outcomes as structured results
+- [x] CPU/GPU switching via the OAuth-authenticated Colab runtime API, including
+      quota/denial outcomes as structured results
+- [x] Live verification corrected `/tun/m` assignment routing to
+      `colab.research.google.com` with `authuser=0` (the `colab.pa.googleapis.com`
+      origin returns HTML 404 for these routes)
 - [ ] Pre-stop save/snapshot/manifest sequence; post-connect verify/restore sequence
 
 Phase-1 boundary: destructive tools require caller-confirmed external notebook/snapshot/log/

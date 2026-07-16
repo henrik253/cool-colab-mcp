@@ -137,7 +137,7 @@ async def test_restore_snapshot_replaces_cells_in_order(server, manager):
     )
     assert session.proxy_client.call_tool.call_args_list[3].args == (
         "add_code_cell",
-        {"code": "x = 1", "cellIndex": 0},
+        {"code": "x = 1", "cellIndex": 0, "language": "python"},
     )
     assert session.proxy_client.call_tool.call_args_list[4].args == (
         "add_text_cell",
@@ -190,6 +190,25 @@ async def test_export_notebook_writes_current_cells(server, manager, tmp_path):
         )
     assert result.structured_content["path"] == str(destination)
     assert json.loads(destination.read_text())["cells"][1]["source"] == "# Notes"
+
+
+@pytest.mark.asyncio
+async def test_export_merges_outputs_returned_by_run_cell(server, manager, tmp_path):
+    outputs = [{"output_type": "stream", "name": "stdout", "text": ["saved\n"]}]
+    await connect(
+        manager,
+        [fake_raw_result({"outputs": outputs}), fake_raw_result(CELLS)],
+    )
+    destination = tmp_path / "export.ipynb"
+    async with Client(server) as client:
+        await client.call_tool(
+            "run_code_cell", {"notebook_id": "training", "cellId": "c1"}
+        )
+        await client.call_tool(
+            "export_notebook",
+            {"notebook_id": "training", "destination": str(destination)},
+        )
+    assert json.loads(destination.read_text())["cells"][0]["outputs"] == outputs
 
 
 @pytest.mark.asyncio
