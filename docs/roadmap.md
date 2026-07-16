@@ -27,7 +27,7 @@ All Phase 1 feature branches and the integration refactor sweep are complete.
 | Runtime control | 11 | — | ✅ **Merged** to `integration` (PR #9, `b809019`) |
 | Integration refactor | — | `integration` | ✅ Combined `main...integration` sweep complete |
 | Three-notebook live demo | manual verification | `feature/three-notebook-demo` | 🟡 Harness complete; live Colab/OAuth execution required |
-| Local repository notebook sync | 5a | `feature/local-notebook-sync` | 🟡 In progress |
+| Local repository notebook sync | 5a | — | ✅ **Merged** to `integration` (PR #12, `0d6b419`) |
 
 Final integration PR #10 is open with green CI. Before merging it, run the three-notebook live
 demo to exercise the real multi-session/auth/runtime/upload path. Section 1 remains open until
@@ -235,11 +235,11 @@ over every instrumented module), `TestNamespacedLoggers::test_registry_failure_u
 
 ## 5a. Local repository notebook synchronization (plan.md §4)
 
-- [ ] Registry records accept exactly one source: a Colab URL or an allowed local `.ipynb`
-- [ ] Opening a local record restores its cells into an independent Colab scratch session
-- [ ] Explicit local → Colab reload and atomic Colab → local sync tools
-- [ ] Host notebook access restricted by `COOL_COLAB_MCP_NOTEBOOK_DIRS`
-- [ ] Three-notebook demo uses tracked repository notebooks and syncs them back after verification
+- [x] Registry records accept exactly one source: a Colab URL or an allowed local `.ipynb`
+- [x] Opening a local record restores its cells into an independent Colab scratch session
+- [x] Explicit local → Colab reload and atomic Colab → local sync tools
+- [x] Host notebook access restricted by `COOL_COLAB_MCP_NOTEBOOK_DIRS`
+- [x] Three-notebook demo uses tracked repository notebooks and syncs them back after verification
 
 **Tests:** `records_test.py::TestNotebookRecord`
 (`test_exactly_one_remote_or_local_source_is_required`,
