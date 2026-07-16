@@ -1,0 +1,8 @@
+# Local operator configuration and OAuth client secrets
+config.local.json
+config/
+
+# Demo-local MCP state, browser credentials, and logs
+.cool-colab-mcp/
+browser-profile/
+*.log

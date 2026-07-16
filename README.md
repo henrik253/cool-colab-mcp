@@ -19,6 +19,7 @@ This is an improved fork of [googlecolab/colab-mcp](https://github.com/googlecol
 | Feature | Upstream | Cool Colab MCP |
 |---|---|---|
 | Reopen an existing notebook | No — always a blank scratch notebook | Per-connection `notebook_url`, notebook registry |
+| Use repository `.ipynb` files | No | Local → Colab restore and atomic Colab → local sync |
 | Multiple notebooks at once | No — one connection, one tab | One independent session per notebook |
 | Survive restarts | No | Persistent auth, registry, and snapshots on disk |
 | Save/restore notebook content | No | `.ipynb` snapshots with restore and export |
@@ -82,9 +83,23 @@ uv run pytest                # run tests
 uv run pre-commit install    # once per clone
 ```
 
+To use notebooks directly from a repository, allow only that repository (or its notebook
+directory), register the local path, and sync back before closing the session:
+
+```bash
+export COOL_COLAB_MCP_NOTEBOOK_DIRS=/absolute/path/to/project
+```
+
+Call `register_notebook` with `local_path=/absolute/path/to/project/notebooks/job.ipynb`.
+`open_notebook` opens a scratch Colab tab and restores that file into it. After editing or
+running cells, call `sync_notebook_to_local`; the registered `.ipynb` is replaced atomically.
+Use `sync_notebook_to_colab` to explicitly discard the tab's cells and reload the local file.
+`close_notebook` intentionally does not sync, so an accidental close cannot overwrite local
+work.
+
 To exercise three simultaneous notebooks, persistent OAuth, CPU/T4 runtime control, and
 verified uploads before deployment, follow the
-[three-notebook live demo](docs/three-notebook-demo.md).
+[self-contained three-notebook agent demo](demo/three_notebooks/README.md).
 
 ## Status
 

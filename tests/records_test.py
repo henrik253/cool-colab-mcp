@@ -22,6 +22,7 @@ from cool_colab_mcp.constants import (
     COLAB,
     DEFAULT_NOTEBOOK_ID,
     HOME_ENV,
+    NOTEBOOK_DIRS_ENV,
     REGISTRY_STORE,
     STORAGE_SUFFIX,
 )
@@ -59,6 +60,26 @@ class TestNotebookRecord:
     def test_preferred_runtime_optional_and_stored(self):
         assert record().preferred_runtime is None
         assert record(preferred_runtime="gpu").preferred_runtime == "gpu"
+
+    def test_exactly_one_remote_or_local_source_is_required(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv(NOTEBOOK_DIRS_ENV, str(tmp_path))
+        path = tmp_path / "local.ipynb"
+        path.write_text('{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}')
+        with pytest.raises(ToolFailed) as missing:
+            record(url=None)
+        with pytest.raises(ToolFailed) as both:
+            record(local_path=str(path))
+        assert missing.value.error.kind == "invalid_input"
+        assert both.value.error.kind == "invalid_input"
+
+    def test_local_notebook_source_is_stored(self, tmp_path, monkeypatch):
+        monkeypatch.setenv(NOTEBOOK_DIRS_ENV, str(tmp_path))
+        path = tmp_path / "local.ipynb"
+        path.write_text('{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}')
+        local = record(url=None, local_path=str(path))
+        assert local.local_path == str(path.resolve())
 
 
 class TestNotebookRegistry:
@@ -140,3 +161,16 @@ class TestNotebookRegistry:
         NotebookRegistry().register(record(preferred_runtime="gpu"))
         # a fresh instance (as after a server restart) sees the same records
         assert NotebookRegistry().get("training") == record(preferred_runtime="gpu")
+
+    def test_local_record_remains_removable_after_file_disappears(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv(NOTEBOOK_DIRS_ENV, str(tmp_path))
+        path = tmp_path / "local.ipynb"
+        path.write_text('{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}')
+        registry = NotebookRegistry()
+        registry.register(record(url=None, local_path=str(path)))
+        path.unlink()
+        assert registry.list()[0].local_path == str(path)
+        registry.remove("training")
+        assert registry.list() == []

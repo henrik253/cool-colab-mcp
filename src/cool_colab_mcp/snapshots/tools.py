@@ -14,6 +14,7 @@ from cool_colab_mcp.constants import (
 )
 from cool_colab_mcp.errors import ToolFailed, fail
 from cool_colab_mcp.sessions.manager import SessionManager
+from cool_colab_mcp.sessions.session import NotebookSession
 from cool_colab_mcp.snapshots.manager import (
     RecoveryMetadata,
     SnapshotManager,
@@ -24,6 +25,32 @@ from cool_colab_mcp.utils import json_tool_result
 
 def _cells(payload: dict[str, Any]) -> Any:
     return payload.get("cells", payload)
+
+
+async def capture_document(session: NotebookSession) -> dict[str, Any]:
+    result = await session.call_tool(GET_CELLS, {})
+    if result.structured_content is None:
+        raise fail("protocol_error", "get_cells returned no structured notebook data.")
+    return notebook_document(_cells(result.structured_content))
+
+
+async def restore_document(session: NotebookSession, document: dict[str, Any]) -> None:
+    current = await session.call_tool(GET_CELLS, {})
+    current_cells = _cells(current.structured_content or {})
+    if not isinstance(current_cells, list):
+        raise fail("protocol_error", "get_cells returned an unexpected payload.")
+    for cell in reversed(current_cells):
+        cell_id = cell.get("id", cell.get("cellId"))
+        if not isinstance(cell_id, str):
+            raise fail("protocol_error", "get_cells returned a cell without an id.")
+        await session.call_tool(DELETE_CELL, {"cellId": cell_id})
+    for index, cell in enumerate(document["cells"]):
+        source = cell.get("source", "")
+        if isinstance(source, list):
+            source = "".join(source)
+        tool = ADD_TEXT_CELL if cell.get("cell_type") == "markdown" else ADD_CODE_CELL
+        key = "content" if tool == ADD_TEXT_CELL else "code"
+        await session.call_tool(tool, {key: source, "cellIndex": index})
 
 
 def register_snapshot_tools(mcp: FastMCP, sessions: SessionManager) -> None:
@@ -90,30 +117,7 @@ def register_snapshot_tools(mcp: FastMCP, sessions: SessionManager) -> None:
         try:
             session = sessions.get(notebook_id)
             document = snapshots.load(session.notebook_id, snapshot_id)
-            current = await session.call_tool(GET_CELLS, {})
-            current_cells = _cells(current.structured_content or {})
-            if not isinstance(current_cells, list):
-                raise fail(
-                    "protocol_error", "get_cells returned an unexpected payload."
-                )
-            for cell in reversed(current_cells):
-                cell_id = cell.get("id", cell.get("cellId"))
-                if not isinstance(cell_id, str):
-                    raise fail(
-                        "protocol_error", "get_cells returned a cell without an id."
-                    )
-                await session.call_tool(DELETE_CELL, {"cellId": cell_id})
-            for index, cell in enumerate(document["cells"]):
-                source = cell.get("source", "")
-                if isinstance(source, list):
-                    source = "".join(source)
-                tool = (
-                    ADD_TEXT_CELL
-                    if cell.get("cell_type") == "markdown"
-                    else ADD_CODE_CELL
-                )
-                key = "content" if tool == ADD_TEXT_CELL else "code"
-                await session.call_tool(tool, {key: source, "cellIndex": index})
+            await restore_document(session, document)
         except ToolFailed as failure:
             return failure.error.as_result()
         return json_tool_result(

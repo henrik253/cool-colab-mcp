@@ -14,7 +14,7 @@
 
 """NotebookRecord and its persistent store on top of storage.py (plan.md §4)."""
 
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, ValidationError, field_validator, model_validator
 
 from cool_colab_mcp import storage
 from cool_colab_mcp.constants import DEFAULT_NOTEBOOK_ID, REGISTRY_STORE
@@ -27,7 +27,8 @@ class NotebookRecord(BaseModel):
 
     notebook_id: str  # the registry key, a human-chosen slug
     name: str
-    url: str
+    url: str | None = None
+    local_path: str | None = None
     preferred_runtime: str | None = None  # e.g. "cpu"/"gpu"; stored for the
     # future change_runtime feature (plan.md §8) — no behavior yet
 
@@ -46,8 +47,17 @@ class NotebookRecord(BaseModel):
 
     @field_validator("url")
     @classmethod
-    def _colab_notebook_url(cls, url: str) -> str:
-        return validate_notebook_url(url)
+    def _colab_notebook_url(cls, url: str | None) -> str | None:
+        return validate_notebook_url(url) if url is not None else None
+
+    @model_validator(mode="after")
+    def _one_notebook_source(self) -> "NotebookRecord":
+        if (self.url is None) == (self.local_path is None):
+            raise fail(
+                "invalid_input",
+                "Register exactly one notebook source: url or local_path.",
+            )
+        return self
 
 
 class NotebookRegistry:

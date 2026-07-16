@@ -26,7 +26,8 @@ All Phase 1 feature branches and the integration refactor sweep are complete.
 | Direct file upload | 10 | — | ✅ **Merged** to `integration` (PR #8, `129ac72`) |
 | Runtime control | 11 | — | ✅ **Merged** to `integration` (PR #9, `b809019`) |
 | Integration refactor | — | `integration` | ✅ Combined `main...integration` sweep complete |
-| Three-notebook live demo | manual verification | `feature/three-notebook-demo` | 🟡 Harness complete; live Colab URLs/OAuth input required |
+| Three-notebook live demo | manual verification | `feature/three-notebook-demo` | 🟡 Harness complete; live Colab/OAuth execution required |
+| Local repository notebook sync | 5a | `feature/local-notebook-sync` | 🟡 In progress |
 
 Final integration PR #10 is open with green CI. Before merging it, run the three-notebook live
 demo to exercise the real multi-session/auth/runtime/upload path. Section 1 remains open until
@@ -65,9 +66,11 @@ parallel branches and must share one persistence implementation. Covered by
 - [ ] Document the manual setup steps in README.md
 
 **Tests:** existing `session_test.py`, `websocket_server_test.py` pass. The live-demo harness is
-covered offline by `demo_test.py` (`test_plan_has_two_cpu_one_t4_and_isolated_upload_destinations`,
+covered offline by `demo/three_notebooks/demo_test.py`
+(`test_plan_has_two_cpu_one_t4_and_isolated_upload_destinations`,
+`test_relative_paths_resolve_from_the_demo_config`,
 `test_plan_requires_three_unique_notebooks`, `test_plan_requires_two_cpu_and_one_t4`,
-`test_plan_rejects_placeholder_url`,
+`test_plan_rejects_placeholder_local_path`,
 `test_register_and_open_routes_three_notebooks_concurrently`,
 `test_configure_requires_every_assignment_endpoint`,
 `test_configure_routes_explicit_endpoints_and_profiles`,
@@ -229,6 +232,35 @@ over every instrumented module), `TestNamespacedLoggers::test_registry_failure_u
 `test_registered_but_never_opened_closes_idempotently`,
 `test_unregistered_id_returns_unknown_notebook`),
 `registry_tools_test.py::TestPersistenceAcrossRestart::test_registry_survives_server_restart`
+
+## 5a. Local repository notebook synchronization (plan.md §4)
+
+- [ ] Registry records accept exactly one source: a Colab URL or an allowed local `.ipynb`
+- [ ] Opening a local record restores its cells into an independent Colab scratch session
+- [ ] Explicit local → Colab reload and atomic Colab → local sync tools
+- [ ] Host notebook access restricted by `COOL_COLAB_MCP_NOTEBOOK_DIRS`
+- [ ] Three-notebook demo uses tracked repository notebooks and syncs them back after verification
+
+**Tests:** `records_test.py::TestNotebookRecord`
+(`test_exactly_one_remote_or_local_source_is_required`,
+`test_local_notebook_source_is_stored`),
+`records_test.py::TestNotebookRegistry`
+(`test_local_record_remains_removable_after_file_disappears`),
+`registry_tools_test.py::TestRegisterNotebook`
+(`test_registers_allowed_local_notebook`,
+`test_local_notebook_outside_allowlist_is_rejected`),
+`registry_tools_test.py::TestLocalNotebookSync`
+(`test_open_local_notebook_restores_it_into_scratch_colab`,
+`test_sync_to_colab_replaces_cells`,
+`test_sync_to_local_atomically_writes_current_cells`,
+`test_remote_record_rejects_local_sync` (both directions),
+`test_unknown_notebook_is_structured` (both directions),
+`test_disconnected_local_notebook_is_structured` (both directions),
+`test_malformed_local_file_fails_without_touching_colab`,
+`test_failed_sync_to_local_preserves_original_file`), and `demo_test.py`
+(`test_plan_rejects_placeholder_local_path`,
+`test_register_and_open_routes_three_notebooks_concurrently`,
+`test_verify_upload_accepts_two_cpu_one_t4`).
 
 ## 6. Reusable `NotebookSession` (plan.md §6)
 
