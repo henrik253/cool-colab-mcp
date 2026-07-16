@@ -145,3 +145,8 @@ BROWSER_PROFILE_DIR_NAME = "browser-profile"
 # needs this; the older Private Network Access response headers do NOT satisfy it.
 LOCAL_NETWORK_PERMISSION = "local-network-access"
 DIALOG_TIMEOUT_MS = 60_000
+# Real Google Chrome rather than Playwright's bundled Chromium: Google refuses
+# sign-in in unbranded/automated browsers ("this browser may not be secure").
+CHROME_CHANNEL = "chrome"
+# Playwright sets this by default; it is the flag Google's sign-in check trips on.
+AUTOMATION_FLAG = "--enable-automation"

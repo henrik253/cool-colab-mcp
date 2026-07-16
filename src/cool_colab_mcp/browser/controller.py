@@ -22,7 +22,9 @@ import logging
 
 from cool_colab_mcp.browser.adapters.colab import approval
 from cool_colab_mcp.constants import (
+    AUTOMATION_FLAG,
     BROWSER_PROFILE_DIR_NAME,
+    CHROME_CHANNEL,
     COLAB,
     DIALOG_TIMEOUT_MS,
     LOCAL_NETWORK_PERMISSION,
@@ -36,14 +38,28 @@ logger = logging.getLogger(__name__)
 class BrowserController:
     """One managed Chromium, one page per notebook_id."""
 
-    def __init__(self, headless: bool = False):
+    def __init__(
+        self,
+        headless: bool = False,
+        use_chrome: bool = True,
+        cdp_url: str | None = None,
+    ):
         self.headless = headless
+        # Real Chrome by default: Google refuses sign-in in Playwright's bundled
+        # Chromium, so a profile there can never become useful.
+        self.use_chrome = use_chrome
+        # Attach to a Chrome the operator started themselves (and signed into)
+        # instead of launching one. The most reliable route past Google's
+        # automated-browser sign-in check.
+        self.cdp_url = cdp_url
         self._playwright = None
         self._context = None
+        self._owns_browser = True
+        self._browser = None
         self._pages: dict[str, object] = {}
 
     async def start(self) -> None:
-        """Launch Chromium with the persistent profile and the Colab-scoped permission."""
+        """Launch Chrome with the persistent profile, or attach to a running one."""
         try:
             from playwright.async_api import async_playwright
         except ImportError as exc:
@@ -54,16 +70,47 @@ class BrowserController:
             ) from exc
 
         self._playwright = await async_playwright().start()
-        # A persistent profile keeps the Google login across restarts (plan.md §3/§10).
-        self._context = await self._playwright.chromium.launch_persistent_context(
-            user_data_dir=str(base_dir() / BROWSER_PROFILE_DIR_NAME),
-            headless=self.headless,
-        )
+        if self.cdp_url:
+            # The operator owns this browser; we only drive it.
+            self._browser = await self._playwright.chromium.connect_over_cdp(
+                self.cdp_url
+            )
+            self._owns_browser = False
+            self._context = (
+                self._browser.contexts[0]
+                if self._browser.contexts
+                else await self._browser.new_context()
+            )
+        else:
+            # A persistent profile keeps the Google login across restarts
+            # (plan.md §3/§10).
+            self._context = await self._playwright.chromium.launch_persistent_context(
+                user_data_dir=str(base_dir() / BROWSER_PROFILE_DIR_NAME),
+                headless=self.headless,
+                channel=CHROME_CHANNEL if self.use_chrome else None,
+                # Google's sign-in refuses browsers advertising automation.
+                ignore_default_args=[AUTOMATION_FLAG],
+            )
         # Chrome's Local Network Access gate gives Colab (a public origin) permission to
         # reach our localhost server. Scoped to the Colab origin only; without it the
         # dialog is accepted but the WebSocket dies with ERR_BLOCKED_BY_LOCAL_NETWORK.
-        await self._context.grant_permissions([LOCAL_NETWORK_PERMISSION], origin=COLAB)
-        logger.info("browser started (headless=%s)", self.headless)
+        try:
+            await self._context.grant_permissions(
+                [LOCAL_NETWORK_PERMISSION], origin=COLAB
+            )
+        except Exception:
+            # Older Chrome builds lack the Local Network Access permission; the
+            # connection then fails visibly at approval time rather than silently here.
+            logger.warning(
+                "could not pre-grant %s; Colab may be blocked from reaching localhost",
+                LOCAL_NETWORK_PERMISSION,
+            )
+        logger.info(
+            "browser started (headless=%s, chrome=%s, attached=%s)",
+            self.headless,
+            self.use_chrome,
+            bool(self.cdp_url),
+        )
 
     async def open_and_approve(
         self, notebook_id: str, url: str, token: str, port: int
@@ -94,7 +141,13 @@ class BrowserController:
         """
         if self._context is None:
             raise fail("not_connected", "Browser controller is not started.")
-        page = await self._context.new_page()
+        # A persistent context starts with one blank page; reuse it so the operator
+        # sees a single window rather than a stray blank tab beside the real one.
+        page = (
+            self._context.pages[0]
+            if self._context.pages
+            else await self._context.new_page()
+        )
         await page.goto(url, wait_until="domcontentloaded")
         return page
 
@@ -105,11 +158,12 @@ class BrowserController:
             await page.close()
 
     async def aclose(self) -> None:
-        """Shut the browser down."""
+        """Shut down what we started; never close a browser the operator owns."""
         self._pages.clear()
-        if self._context is not None:
+        if self._context is not None and self._owns_browser:
             await self._context.close()
-            self._context = None
+        self._context = None
+        self._browser = None
         if self._playwright is not None:
             await self._playwright.stop()
             self._playwright = None
