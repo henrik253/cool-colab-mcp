@@ -1,0 +1,26 @@
+{
+  "oauth_config_path": "config/google-oauth-desktop-client.json",
+  "notebooks": [
+    {
+      "notebook_id": "demo-cpu-a",
+      "name": "Demo CPU A",
+      "local_path": "notebooks/cpu-a.ipynb",
+      "runtime_profile": "prototype-cpu",
+      "assignment_endpoint": null
+    },
+    {
+      "notebook_id": "demo-cpu-b",
+      "name": "Demo CPU B",
+      "local_path": "notebooks/cpu-b.ipynb",
+      "runtime_profile": "prototype-cpu",
+      "assignment_endpoint": null
+    },
+    {
+      "notebook_id": "demo-t4",
+      "name": "Demo T4 GPU",
+      "local_path": "notebooks/t4.ipynb",
+      "runtime_profile": "debug-gpu",
+      "assignment_endpoint": null
+    }
+  ]
+}

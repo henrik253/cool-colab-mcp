@@ -172,14 +172,25 @@ open_notebook
 close_notebook
 remove_notebook
 get_notebook_status
+sync_notebook_to_colab
+sync_notebook_to_local
 ```
 
 ### Expected behavior
 
 The notebook URL and metadata remain available after restarting the MCP server, browser, or host machine.
 
+A record may instead reference an allowed local repository `.ipynb`. Opening that record
+creates a replaceable Colab scratch session and restores the local cells into it. Explicit
+sync tools move the notebook in either direction; sync-back atomically writes the live Colab
+cells and available outputs to the registered local file. Local notebook access is restricted
+to configured repository roots, and closing a session never overwrites a local file implicitly.
+
 `open_notebook` resolves the registered URL and opens it through the per-connection
 targeting layer (`notebook_url`, see "Per-Connection Notebook Targeting").
+
+Local records use the same session routing and snapshot validation/restore machinery rather
+than a separate notebook representation.
 
 ## 5. Notebook State and Snapshots
 
@@ -317,6 +328,11 @@ Before stopping a runtime, the system should:
 3. save selected logs and checkpoints;
 4. store the environment reconstruction manifest.
 
+In Phase 1, the tool generates the environment manifest but requires the caller to
+confirm that the notebook, snapshot, selected logs, and checkpoints were preserved
+externally before any destructive API request. It never claims to have saved those
+artifacts itself. Automated snapshot/save orchestration is Phase 2 (section 12).
+
 After a new runtime connects, the system should:
 
 1. verify the actual hardware;
@@ -325,10 +341,14 @@ After a new runtime connects, the system should:
 4. restore the latest checkpoint;
 5. report whether the requested profile was satisfied.
 
+In Phase 1, `connect_runtime` verifies and reports actual hardware. Automated dependency,
+project-file, and checkpoint restoration is Phase 2 (section 12).
+
 ### Implementation
 
 Runtime-type changes use the OAuth-authenticated Colab runtime API
-(`colab.pa.googleapis.com`), as proven by the reference fork's `change_runtime` tool.
+(`/tun/m` routes on `colab.research.google.com`), as proven by the reference fork's
+`change_runtime` tool and confirmed by live verification.
 It supports assigning T4 / L4 / A100 / TPU variants or NONE (CPU) and surfaces quota
 and denial outcomes (`QUOTA_DENIED`, `DENYLISTED`, ...) as structured results. Browser
 automation is **not** required for runtime switching — this moves CPU/GPU switching

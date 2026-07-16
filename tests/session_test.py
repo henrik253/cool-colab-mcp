@@ -13,165 +13,278 @@
 # limitations under the License.
 
 import asyncio
-from colab_mcp import session
-from fastmcp.server.middleware import MiddlewareContext
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock, Mock
+from conftest import fake_raw_result, mock_proxy_client
+
+from cool_colab_mcp.constants import COLAB, NOTEBOOK_URL_ENV, SCRATCH_PATH
+from cool_colab_mcp.errors import ToolFailed
+from cool_colab_mcp.sessions import session
+
+DRIVE_URL = f"{COLAB}/drive/file-id-1"
+GITHUB_URL = f"{COLAB}/github/user/repo/blob/main/nb.ipynb"
 
 
-@pytest.fixture(autouse=True)
-def mock_webbrowser(monkeypatch):
-    import webbrowser
-
-    mock_open = Mock()
-    monkeypatch.setattr(webbrowser, "open_new", mock_open)
-    return mock_open
+def make_session(proxy=None) -> session.NotebookSession:
+    """A NotebookSession wired to mocks at the WebSocket/proxy boundary."""
+    nb_session = session.NotebookSession("nb-1")
+    nb_session.proxy_client = proxy
+    return nb_session
 
 
-@pytest.fixture
-def mock_wss():
-    """Provides a mock ColabWebSocketServer instance."""
-    return MockColabWebSocketServer()
+class TestValidateNotebookUrl:
+    @pytest.mark.parametrize("url", [DRIVE_URL, GITHUB_URL])
+    def test_accepted_forms(self, url):
+        assert session.validate_notebook_url(url) == url
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://evil.com/drive/file-id-1",
+            "http://colab.research.google.com/drive/file-id-1",
+            f"{COLAB}/notebooks/empty.ipynb",
+            "not a url",
+        ],
+    )
+    def test_rejected_forms(self, url):
+        with pytest.raises(ToolFailed) as exc_info:
+            session.validate_notebook_url(url)
+        assert exc_info.value.error.kind == "invalid_input"
+        assert exc_info.value.error.details == {"notebook_url": url}
 
 
-class MockColabWebSocketServer:
-    def __init__(self):
-        self.connection_live = asyncio.Event()
-        self.read_stream = AsyncMock()
-        self.write_stream = AsyncMock()
-        self.token = "test-token"
-        self.port = 1234
+class TestResolveNotebookUrl:
+    def test_explicit_url_wins_and_becomes_active(self, monkeypatch):
+        monkeypatch.setenv(NOTEBOOK_URL_ENV, f"{COLAB}/drive/env-pin")
+        nb_session = make_session()
+        assert nb_session.resolve_notebook_url(DRIVE_URL) == DRIVE_URL
+        assert nb_session.active_notebook_url == DRIVE_URL
 
-    async def __aenter__(self):
-        return self
+    def test_explicit_url_replaces_previous_active(self):
+        nb_session = make_session()
+        nb_session.resolve_notebook_url(DRIVE_URL)
+        nb_session.cell_outputs["shared-id"] = [{"output_type": "stream"}]
+        assert nb_session.resolve_notebook_url(GITHUB_URL) == GITHUB_URL
+        assert nb_session.active_notebook_url == GITHUB_URL
+        assert nb_session.cell_outputs == {}
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+    def test_reconnect_same_url_keeps_cached_outputs(self):
+        nb_session = make_session()
+        nb_session.resolve_notebook_url(DRIVE_URL)
+        nb_session.cell_outputs["cell"] = []
+        nb_session.resolve_notebook_url(DRIVE_URL)
+        assert nb_session.cell_outputs == {"cell": []}
+
+    def test_fallback_to_explicit_url_clears_cached_outputs(self, monkeypatch):
+        monkeypatch.setenv(NOTEBOOK_URL_ENV, f"{COLAB}/drive/env-pin")
+        nb_session = make_session()
+        nb_session.resolve_notebook_url(None)
+        nb_session.cell_outputs["shared-id"] = []
+        nb_session.resolve_notebook_url(DRIVE_URL)
+        assert nb_session.cell_outputs == {}
+
+    def test_active_notebook_reused_without_parameter(self):
+        nb_session = make_session()
+        nb_session.resolve_notebook_url(DRIVE_URL)
+        assert nb_session.resolve_notebook_url(None) == DRIVE_URL
+
+    def test_env_pin_fallback(self, monkeypatch):
+        monkeypatch.setenv(NOTEBOOK_URL_ENV, f"{COLAB}/drive/env-pin")
+        assert make_session().resolve_notebook_url(None) == f"{COLAB}/drive/env-pin"
+
+    def test_scratch_fallback(self, monkeypatch):
+        monkeypatch.delenv(NOTEBOOK_URL_ENV, raising=False)
+        assert make_session().resolve_notebook_url(None) == f"{COLAB}{SCRATCH_PATH}"
+
+    def test_invalid_url_rejected_and_active_unchanged(self):
+        nb_session = make_session()
+        with pytest.raises(ToolFailed):
+            nb_session.resolve_notebook_url("https://evil.com/drive/x")
+        assert nb_session.active_notebook_url is None
 
 
-@pytest.fixture
-def mock_proxy_client(mock_wss):
-    client = Mock(spec=session.ColabProxyClient)
-    client.wss = mock_wss
-    client.is_connected.return_value = False
-    return client
-
-
-class TestColabProxyMiddleware:
+class TestNotebookSessionCallTool:
     @pytest.mark.asyncio
-    async def test_connection_live(self, mock_proxy_client):
-        """Tests connection state change from disconnected to connected."""
-        middleware = session.ColabProxyMiddleware(mock_proxy_client)
-        mock_proxy_client.is_connected.return_value = True
-        context = Mock(spec=MiddlewareContext)
-        context.fastmcp_context.set_state = Mock()
-        context.fastmcp_context.send_tool_list_changed = AsyncMock()
-        call_next = AsyncMock()
-
-        await middleware.on_message(context, call_next)
-
-        call_next.assert_called_once_with(context)
-        context.fastmcp_context.set_state.assert_any_call("fe_connected", True)
-        context.fastmcp_context.set_state.assert_any_call("proxy_token", "test-token")
-        context.fastmcp_context.set_state.assert_any_call("proxy_port", 1234)
-        assert middleware.last_message_connected is True
-        context.fastmcp_context.send_tool_list_changed.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_connection_not_live(self, mock_proxy_client):
-        """Tests connection state change from connected to disconnected."""
-        mock_proxy_client.is_connected.return_value = True
-        middleware = session.ColabProxyMiddleware(mock_proxy_client)
-        mock_proxy_client.is_connected.return_value = False
-        context = Mock(spec=MiddlewareContext)
-        context.fastmcp_context.set_state = Mock()
-        context.fastmcp_context.send_tool_list_changed = AsyncMock()
-        call_next = AsyncMock()
-
-        await middleware.on_message(context, call_next)
-
-        call_next.assert_called_once_with(context)
-        context.fastmcp_context.set_state.assert_any_call("fe_connected", False)
-        assert middleware.last_message_connected is False
-        context.fastmcp_context.send_tool_list_changed.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_no_connection_change(self, mock_proxy_client):
-        """Tests no connection state change."""
-        mock_proxy_client.is_connected.return_value = True
-        middleware = session.ColabProxyMiddleware(mock_proxy_client)
-        context = Mock(spec=MiddlewareContext)
-        context.fastmcp_context.set_state = Mock()
-        context.fastmcp_context.send_tool_list_changed = AsyncMock()
-        call_next = AsyncMock()
-
-        await middleware.on_message(context, call_next)
-
-        call_next.assert_called_once_with(context)
-        context.fastmcp_context.set_state.assert_any_call("fe_connected", True)
-        assert middleware.last_message_connected is True
-        context.fastmcp_context.send_tool_list_changed.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_on_call_tool_await_connection(self, mock_proxy_client):
-        middleware = session.ColabProxyMiddleware(mock_proxy_client)
-        context = Mock()
-        context.fastmcp_context.report_progress = AsyncMock()
-        context.message.name = session.INJECTED_TOOL_NAME
-        mock_proxy_client.is_connected.side_effect = [False, True]
-        mock_proxy_client.await_proxy_connection = AsyncMock()
-        call_next = AsyncMock()
-
-        result = await middleware.on_call_tool(context, call_next)
-
-        mock_proxy_client.await_proxy_connection.assert_called_once()
-        context.fastmcp_context.report_progress.assert_called()
-        assert result.structured_content == {"result": True}
+    async def test_disconnected_raises_structured_error(self):
+        nb_session = make_session()
+        with pytest.raises(ToolFailed) as exc_info:
+            await nb_session.call_tool("get_cells", {})
+        assert exc_info.value.error.kind == "not_connected"
+        assert exc_info.value.error.details == {"notebook_id": "nb-1"}
 
     @pytest.mark.asyncio
-    async def test_on_call_tool_timeout(self, mock_proxy_client):
-        middleware = session.ColabProxyMiddleware(mock_proxy_client)
-        context = Mock()
-        context.fastmcp_context.report_progress = AsyncMock()
-        context.message.name = session.INJECTED_TOOL_NAME
-        mock_proxy_client.is_connected.return_value = False
-        mock_proxy_client.await_proxy_connection = AsyncMock()
-        call_next = AsyncMock()
+    async def test_forwards_and_strips_none_args(self):
+        proxy = mock_proxy_client([fake_raw_result({"ok": True})])
+        nb_session = make_session(proxy)
 
-        result = await middleware.on_call_tool(context, call_next)
-
-        mock_proxy_client.await_proxy_connection.assert_called_once()
-        assert result.structured_content == {"result": False}
-
-
-class TestCheckSessionProxyToolFn:
-    @pytest.mark.asyncio
-    async def test_connected(self):
-        ctx = Mock()
-        ctx.get_state.side_effect = (
-            lambda k: True if k == session.FE_CONNECTED_KEY else None
+        result = await nb_session.call_tool(
+            "add_code_cell", {"code": "1+1", "cellIndex": None}
         )
-        assert await session.check_session_proxy_tool_fn(ctx) is True
+
+        proxy.call_tool.assert_awaited_once_with("add_code_cell", {"code": "1+1"})
+        assert result.structured_content == {"ok": True}
 
     @pytest.mark.asyncio
-    async def test_disconnected(self, mock_webbrowser):
-        ctx = Mock()
+    async def test_mid_call_drop_raises_structured_not_connected(self):
+        proxy = mock_proxy_client()
+        nb_session = make_session(proxy)
 
-        def get_state(k):
-            if k == session.FE_CONNECTED_KEY:
-                return False
-            if k == session.PROXY_TOKEN_KEY:
-                return "test-token"
-            if k == session.PROXY_PORT_KEY:
-                return 1234
-            return None
+        async def drop(*args, **kwargs):
+            proxy.is_connected.return_value = False  # the WebSocket just died
+            raise ConnectionError("stream ends after 0 bytes")
 
-        ctx.get_state.side_effect = get_state
-        assert await session.check_session_proxy_tool_fn(ctx) is False
-        mock_webbrowser.assert_called_once()
-        args, _ = mock_webbrowser.call_args
-        assert "mcpProxyToken=test-token" in args[0]
-        assert "mcpProxyPort=1234" in args[0]
+        proxy.call_tool = AsyncMock(side_effect=drop)
+
+        with pytest.raises(ToolFailed) as exc_info:
+            await nb_session.call_tool("get_cells", {})
+        assert exc_info.value.error.kind == "not_connected"
+        assert exc_info.value.error.details == {"notebook_id": "nb-1"}
+        assert isinstance(exc_info.value.__cause__, ConnectionError)
+
+    @pytest.mark.asyncio
+    async def test_error_while_still_connected_propagates(self):
+        proxy = mock_proxy_client([RuntimeError("boom")])
+        with pytest.raises(RuntimeError, match="boom"):
+            await make_session(proxy).call_tool("get_cells", {})
+
+    @pytest.mark.asyncio
+    async def test_mid_call_drop_during_run_code(self):
+        proxy = mock_proxy_client()
+        nb_session = make_session(proxy)
+
+        async def drop(*args, **kwargs):
+            proxy.is_connected.return_value = False
+            raise ConnectionError("Colab Frontend disconnected")
+
+        proxy.call_tool = AsyncMock(side_effect=drop)
+
+        with pytest.raises(ToolFailed) as exc_info:
+            await nb_session.run_code("1+1")
+        assert exc_info.value.error.kind == "not_connected"
+
+    @pytest.mark.asyncio
+    async def test_serializes_via_session_lock(self):
+        proxy = mock_proxy_client()
+        nb_session = make_session(proxy)
+
+        await nb_session.lock.acquire()
+        task = asyncio.create_task(nb_session.call_tool("get_cells", {}))
+        await asyncio.sleep(0.01)
+        assert not task.done()
+        nb_session.lock.release()
+        await task
+
+        proxy.call_tool.assert_awaited_once()
+
+
+class TestRunCode:
+    @pytest.mark.asyncio
+    async def test_happy_path(self):
+        proxy = mock_proxy_client(
+            [
+                fake_raw_result({"newCellId": "c-1"}),
+                fake_raw_result({"output": "42", "outputs": []}),
+            ]
+        )
+        nb_session = make_session(proxy)
+
+        result = await nb_session.run_code("6*7")
+
+        assert result == {"output": "42", "outputs": []}
+        assert nb_session.cell_outputs == {"c-1": []}
+        assert proxy.call_tool.await_args_list[0].args == (
+            "add_code_cell",
+            {"code": "6*7", "cellIndex": 0, "language": "python"},
+        )
+        assert proxy.call_tool.await_args_list[1].args == (
+            "run_code_cell",
+            {"cellId": "c-1"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_public_run_code_cell_caches_outputs_for_persistence(self):
+        outputs = [{"output_type": "stream", "name": "stdout", "text": ["saved\n"]}]
+        session = make_session(
+            mock_proxy_client([fake_raw_result({"outputs": outputs})])
+        )
+        await session.call_tool("run_code_cell", {"cellId": "live-cell"})
+        assert session.cell_outputs == {"live-cell": outputs}
+
+    def test_cached_code_outputs_never_merge_into_markdown(self):
+        session = make_session()
+        session.cell_outputs["shared-id"] = []
+        cells = [{"cellId": "shared-id", "type": "text", "content": "# Notes"}]
+        assert session.merge_cached_outputs(cells) == cells
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "add_result",
+        [
+            fake_raw_result({"newCellId": "c-1"}),
+            fake_raw_result(None, text='{"newCellId": "c-1"}'),
+        ],
+    )
+    async def test_verified_cell_id_parsed_from_structured_or_text(self, add_result):
+        proxy = mock_proxy_client([add_result, fake_raw_result({"output": "ok"})])
+
+        await make_session(proxy).run_code("pass")
+
+        assert proxy.call_tool.await_args_list[1].args[1] == {"cellId": "c-1"}
+
+    @pytest.mark.asyncio
+    async def test_unstructured_run_result_returned_as_text(self):
+        proxy = mock_proxy_client(
+            [fake_raw_result({"newCellId": "c-1"}), fake_raw_result(None, text="done")]
+        )
+        assert await make_session(proxy).run_code("pass") == {"text": "done"}
+
+    @pytest.mark.asyncio
+    async def test_missing_cell_id_fails(self):
+        proxy = mock_proxy_client([fake_raw_result(None, text="no id here")])
+        with pytest.raises(ToolFailed, match="no cell id") as exc_info:
+            await make_session(proxy).run_code("pass")
+        assert exc_info.value.error.kind == "protocol_error"
+
+    @pytest.mark.asyncio
+    async def test_proxy_failure_propagates(self):
+        proxy = mock_proxy_client(
+            [fake_raw_result({"newCellId": "c-1"}), ValueError("boom")]
+        )
+        with pytest.raises(ValueError, match="boom"):
+            await make_session(proxy).run_code("pass")
+
+    @pytest.mark.asyncio
+    async def test_disconnected_raises_structured_error(self):
+        with pytest.raises(ToolFailed) as exc_info:
+            await make_session().run_code("pass")
+        assert exc_info.value.error.kind == "not_connected"
+
+
+class TestNotebookSessionLifecycle:
+    @pytest.mark.asyncio
+    @patch("cool_colab_mcp.sessions.session.ColabProxyClient")
+    @patch("cool_colab_mcp.sessions.session.ColabWebSocketServer")
+    async def test_start_owns_wss_and_proxy_client(self, mock_wss_cls, mock_proxy_cls):
+        mock_wss_cls.return_value.__aenter__ = AsyncMock()
+        mock_proxy_cls.return_value.__aenter__ = AsyncMock()
+        nb_session = session.NotebookSession("nb-1")
+
+        await nb_session.start()
+
+        mock_wss_cls.assert_called_once()
+        mock_proxy_cls.assert_called_once_with(nb_session.wss)
+        await nb_session.aclose()
+
+    def test_token_and_port_delegate_to_wss(self, mock_wss):
+        nb_session = make_session()
+        nb_session.wss = mock_wss
+        assert nb_session.token == "test-token"
+        assert nb_session.port == 1234
+
+    @pytest.mark.asyncio
+    async def test_await_connection_without_start_is_false(self):
+        assert await make_session().await_connection(0.01) is False
 
 
 class TestColabProxyClient:
@@ -183,29 +296,34 @@ class TestColabProxyClient:
         client.proxy_mcp_client = Mock()
         assert client.is_connected() is True
 
-    def test_client_factory_connection_live(self, mock_wss):
-        mock_wss.connection_live.set()
+    @pytest.mark.asyncio
+    async def test_await_connection_success(self, mock_wss):
         client = session.ColabProxyClient(mock_wss)
+        client._start_task = asyncio.create_task(asyncio.sleep(0))
         client.proxy_mcp_client = Mock()
-
-        assert client.client_factory() is client.proxy_mcp_client
-
-    def test_client_factory_connection_not_live(self, mock_wss):
-        client = session.ColabProxyClient(mock_wss)
-        assert client.client_factory() is client.stubbed_mcp_client
-
-    @pytest.mark.asyncio
-    async def test_await_proxy_connection(self, mock_wss):
-        client = session.ColabProxyClient(mock_wss)
-        client._start_task = asyncio.create_task(asyncio.sleep(0.01))
         mock_wss.connection_live.set()
-        with patch("colab_mcp.session.UI_CONNECTION_TIMEOUT", 0.1):
-            await client.await_proxy_connection()
-        await client._start_task
+
+        assert await client.await_connection(0.5) is True
 
     @pytest.mark.asyncio
-    @patch("colab_mcp.session.Client")
-    @patch("colab_mcp.session.ColabTransport", spec=session.ColabTransport)
+    async def test_await_connection_timeout_keeps_start_task_alive(self, mock_wss):
+        client = session.ColabProxyClient(mock_wss)
+        client._start_task = asyncio.create_task(asyncio.sleep(10))
+
+        assert await client.await_connection(0.05) is False
+        assert not client._start_task.cancelled()
+
+        client._start_task.cancel()
+
+    @pytest.mark.asyncio
+    async def test_await_connection_before_start_is_false(self, mock_wss):
+        assert await session.ColabProxyClient(mock_wss).await_connection(0.05) is False
+
+    @pytest.mark.asyncio
+    @patch("cool_colab_mcp.sessions.session.Client")
+    @patch(
+        "cool_colab_mcp.sessions.session.ColabTransport", spec=session.ColabTransport
+    )
     async def test_start_proxy_client(
         self, mock_colab_transport, mock_client, mock_wss
     ):
@@ -218,10 +336,28 @@ class TestColabProxyClient:
         mock_colab_transport.assert_called_once_with(mock_wss)
         mock_client.assert_called_with(mock_colab_transport.return_value)
 
+    @pytest.mark.asyncio
+    async def test_call_tool_forwards_to_mcp_client(self, mock_wss):
+        client = session.ColabProxyClient(mock_wss)
+        client.proxy_mcp_client = Mock()
+        client.proxy_mcp_client.call_tool = AsyncMock(return_value="raw")
+
+        assert await client.call_tool("get_cells", {"a": 1}) == "raw"
+        client.proxy_mcp_client.call_tool.assert_awaited_once_with(
+            "get_cells", {"a": 1}
+        )
+
+    @pytest.mark.asyncio
+    async def test_aexit_cancels_pending_start(self, mock_wss):
+        client = session.ColabProxyClient(mock_wss)
+        async with client:
+            assert client._start_task is not None
+        assert client._start_task.cancelled()
+
 
 class TestColabTransport:
     @pytest.mark.asyncio
-    @patch("colab_mcp.session.ClientSession")
+    @patch("cool_colab_mcp.sessions.session.ClientSession")
     async def test_connect_session(self, mock_client_session, mock_wss):
         transport = session.ColabTransport(mock_wss)
         mock_client_session.return_value.__aenter__ = AsyncMock()
@@ -234,33 +370,3 @@ class TestColabTransport:
         mock_client_session.assert_called_once_with(
             mock_wss.read_stream, mock_wss.write_stream, foo="bar"
         )
-
-
-class TestColabSessionProxy:
-    @pytest.mark.asyncio
-    @patch("colab_mcp.session.ToolInjectionMiddleware")
-    @patch("colab_mcp.session.ColabWebSocketServer")
-    @patch("colab_mcp.session.ColabProxyClient")
-    @patch("colab_mcp.session.ColabProxyMiddleware")
-    async def test_start_proxy_server(
-        self,
-        mock_colab_proxy_middleware,
-        mock_colab_proxy_client,
-        mock_colab_web_socket_server,
-        mock_tool_injection_middleware,
-    ):
-        mock_colab_web_socket_server.return_value.__aenter__ = AsyncMock()
-        mock_colab_proxy_client.return_value.__aenter__ = AsyncMock()
-        proxy = session.ColabSessionProxy()
-        await proxy.start_proxy_server()
-        mock_colab_proxy_client.assert_called_once()
-        assert proxy.proxy_server is not None
-        mock_colab_proxy_middleware.assert_called_once()
-        mock_tool_injection_middleware.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cleanup(self):
-        proxy = session.ColabSessionProxy()
-        proxy._exit_stack = AsyncMock()
-        await proxy.cleanup()
-        proxy._exit_stack.aclose.assert_called_once()

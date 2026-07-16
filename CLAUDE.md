@@ -8,8 +8,9 @@ order. **[docs/roadmap.md](docs/roadmap.md) is the source of truth for progress*
 in progress, and which tests cover each feature. Keep it updated in the same branch as the feature
 it describes.
 
-All markdown documentation lives in `docs/`. The only exceptions are README.md and CLAUDE.md,
-which must stay at the repo root (GitHub and Claude Code read them from there).
+All markdown documentation lives in `docs/`. The exceptions are README.md and CLAUDE.md at the
+repo root (GitHub and Claude Code read them there), plus documentation owned by a self-contained,
+copyable example project, which stays inside that example's directory.
 
 ## Commands
 
@@ -42,20 +43,32 @@ Python 3.13, managed by `uv`. Never use `pip` directly.
 Every feature follows this exact loop:
 
 1. **Pick** the next feature from roadmap.md (ordered by plan.md §17).
-2. **Branch + worktree:**
-   `git worktree add ../cool-colab-mcp-worktrees/feature-<slug> -b feature/<slug>`
-   Work only inside that worktree; never commit feature work directly on `main`.
+2. **Branch + worktree** (always branched from `integration`):
+   `git worktree add ../cool-colab-mcp-worktrees/feature-<slug> -b feature/<slug> integration`
+   Work only inside that worktree; never commit feature work directly on `main` or `integration`.
 3. **Implement** the feature together with its tests. A feature without tests is not done.
 4. **Update roadmap.md**: check off the feature's bullet points and list the test cases added.
 5. **Verify locally**: `uv run pytest` (full suite) and `uv run ruff check .` must pass.
-6. **Squash** all WIP commits into a single conventional commit.
-7. **Review**: launch the `plan-reviewer` agent (`.claude/agents/plan-reviewer.md`) on the
-   squashed commit. It critically compares the change against plan.md. Address its findings
-   before pushing.
-8. **PR**: push the branch and open a PR against `main` with `gh pr create`. CI (ruff + full
-   pytest suite) must be green before merging. Merge with **squash-merge**.
+6. **Curate history**: squash WIP/fixup commits for the same coherent feature into one
+   conventional commit. Keep distinct completed features as separate commits when one branch
+   legitimately contains more than one feature.
+7. **Review**: launch the `plan-reviewer` agent (`.claude/agents/plan-reviewer.md`) on every
+   curated feature commit, or on the complete branch range when it contains multiple features.
+   It critically compares the changes against plan.md. Address its findings before pushing.
+8. **PR**: push the branch and open a PR against **`integration`** — feature PRs never target
+   `main` directly. CI (ruff + full pytest suite) must be green before merging. Merge with
+   **squash-merge** a single-feature PR. For a deliberately curated multi-feature PR, use a
+   rebase merge so its distinct feature commits remain visible.
 9. **Clean up**: `git worktree remove ../cool-colab-mcp-worktrees/feature-<slug>` and delete
    the branch.
+
+### Integration → main
+
+Feature PRs collect on the `integration` branch. When a development wave is complete, run the
+`integration-refactorer` agent (`.claude/agents/integration-refactorer.md`) over the full
+`main..integration` diff: it removes redundancy across features, simplifies, and keeps the
+suite green. After its cleanup lands on `integration`, open a single PR `integration` → `main`
+for user review.
 
 ## Testing
 

@@ -1,7 +1,7 @@
 [project]
-name = "colab-mcp"
+name = "cool-colab-mcp"
 version = "1.0.1"
-description = "An MCP server for Colab"
+description = "Cool Colab MCP — an MCP server that turns Google Colab notebooks into persistent, multi-session workspaces for AI agents"
 readme = "README.md"
 authors = [
     { name = "Tyler Pirtle", email = "rtp@google.com" },
@@ -11,6 +11,7 @@ requires-python = ">=3.13"
 dependencies = [
     "anyio>=4.5",
     "fastmcp==2.14.5",
+    "filelock>=3.20.0",
     "mcp[cli]>=1.20.0",
     "pydantic>=2.12.3,<3.0.0",
     "requests>=2.32.5",
@@ -18,10 +19,11 @@ dependencies = [
     "requests-oauth2client>=0.4.0",
     "google-auth-oauthlib>=0.7.0",
     "jupyter-kernel-client>=0.9.0",
+    "keyring>=25.0.0",
 ]
 
 [project.scripts]
-colab-mcp = "colab_mcp:main"
+cool-colab-mcp = "cool_colab_mcp:main"
 
 [build-system]
 requires = ["hatchling"]
