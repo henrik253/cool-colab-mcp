@@ -153,3 +153,6 @@ AUTOMATION_FLAG = "--enable-automation"
 # An exported browser session (cookies + localStorage). Treat as a credential:
 # it authenticates as the signed-in user with no password or 2FA.
 SESSION_FILE_NAME = "colab-session.json"
+# Where an operator-owned Chrome usually exposes CDP (--remote-debugging-port).
+# 127.0.0.1, never "localhost": Chrome binds the port on IPv4 only.
+CDP_URL_EXAMPLE = "http://127.0.0.1:9222"

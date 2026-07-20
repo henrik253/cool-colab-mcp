@@ -30,6 +30,7 @@ the integration refactor sweep are complete.
 | Three-notebook live demo | manual verification | — | 🟡 OAuth, tab opening, CPU execution, and uploads verified; T4 verification remains |
 | Local repository notebook sync | 5a | — | ✅ **Merged** to `integration` (PR #12, `0d6b419`) |
 | Live Colab compatibility + output sync | 1/2/8/11 | — | ✅ **Merged** to `integration` (PR #14, `c95bdf3`) |
+| CLI auto-approve wiring (managed browser in the MCP server) | 12 | `feature/cli-auto-approve` | 🟡 Committed; PR into `integration` pending |
 
 Final integration PR #15 is open with green CI. The live demo verified OAuth, three-tab opening,
 CPU execution, and direct uploads; its T4 runtime verification remains incomplete. Section 1
@@ -468,12 +469,26 @@ snapshot/bootstrap/checkpoint orchestration remains Phase 2 (§14).
 
 - [x] `BrowserController`: managed Chromium, persistent profile, one page per `notebook_id`
 - [x] Grant Chrome's `local-network-access` permission, scoped to the Colab origin
-- [ ] Replace `webbrowser.open_new` in `server.open_connection` (wiring + opt-in flag)
+- [x] Replace `webbrowser.open_new` in `server.open_connection` (wiring + opt-in flag):
+      `--auto-approve` (+ `--cdp-url` / `--headless` / `--session-file`) on the CLI builds
+      a `BrowserController`, starts it, passes it as `SessionManager(browser=...)`, and
+      closes it on shutdown; behaviour is byte-identical when the flags are absent, and
+      the dependent flags without `--auto-approve` are rejected as bad input
 - [ ] Tab recovery after a browser crash; login/consent page detection
 - [ ] Xvfb / headless deployment (see section 15)
 
-**Tests:** `approval_test.py` (see section 13); controller wiring tests land with the
-`server.open_connection` switch-over.
+**Tests:** `approval_test.py` (see section 13);
+`browser_wiring_test.py::TestManagedBrowserWiring` (server side);
+`cli_test.py::TestAutoApprove`
+(`test_flags_default_off_and_recognized`,
+`test_invalid_flag_combinations_are_rejected` (parametrized: dependent flags
+without `--auto-approve`; `--cdp-url` with `--headless`/`--session-file`),
+`test_wires_browser_into_manager_and_closes_it_on_shutdown`,
+`test_session_file_reaches_the_controller_as_a_path`,
+`test_without_flag_no_browser_is_built`,
+`test_start_failure_aborts_before_serving_and_releases_browser`,
+`test_browser_closes_even_when_manager_close_fails`,
+`test_actionable_start_failure_exits_cleanly_without_traceback`).
 
 ## 13. Automated MCP popup approval
 

@@ -16,12 +16,15 @@
 
 import sys
 import time
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 import cool_colab_mcp
 from cool_colab_mcp import process_registry
+from cool_colab_mcp.errors import fail
+from cool_colab_mcp.sessions.manager import SessionManager
 
 FOREIGN_PID = 4_000_002
 
@@ -114,3 +117,117 @@ class TestNormalStartup:
         pruned.assert_called_once()
         no_real_server.assert_called_once()
         no_real_server.return_value.run_async.assert_awaited_once()
+
+
+@pytest.fixture
+def mock_browser_controller(monkeypatch):
+    """Replace BrowserController with a mock at the Playwright boundary."""
+    instance = Mock(start=AsyncMock(), aclose=AsyncMock())
+    cls = Mock(return_value=instance)
+    monkeypatch.setattr(cool_colab_mcp, "BrowserController", cls)
+    return cls
+
+
+class TestAutoApprove:
+    CDP_URL = "http://127.0.0.1:9222"
+
+    def test_flags_default_off_and_recognized(self):
+        args = cool_colab_mcp.parse_args([])
+        assert (args.auto_approve, args.cdp_url) == (False, None)
+        assert (args.headless, args.session_file) == (False, None)
+        args = cool_colab_mcp.parse_args(["--auto-approve", "--cdp-url", self.CDP_URL])
+        assert (args.auto_approve, args.cdp_url) == (True, self.CDP_URL)
+        args = cool_colab_mcp.parse_args(["--auto-approve", "--headless"])
+        assert (args.auto_approve, args.headless) == (True, True)
+
+    @pytest.mark.parametrize(
+        "flags",
+        [
+            ["--cdp-url", CDP_URL],
+            ["--headless"],
+            ["--session-file", "state.json"],
+            ["--auto-approve", "--cdp-url", CDP_URL, "--headless"],
+            ["--auto-approve", "--cdp-url", CDP_URL, "--session-file", "state.json"],
+        ],
+    )
+    def test_invalid_flag_combinations_are_rejected(self, flags):
+        with pytest.raises(SystemExit):
+            cool_colab_mcp.parse_args(flags)
+
+    def test_wires_browser_into_manager_and_closes_it_on_shutdown(
+        self, monkeypatch, no_real_server, mock_browser_controller
+    ):
+        run_cli(monkeypatch, "--auto-approve", "--cdp-url", self.CDP_URL)
+
+        mock_browser_controller.assert_called_once_with(
+            headless=False, cdp_url=self.CDP_URL, session_file=None
+        )
+        instance = mock_browser_controller.return_value
+        instance.start.assert_awaited_once()
+        manager = no_real_server.call_args.args[0]
+        assert manager.browser is instance
+        no_real_server.return_value.run_async.assert_awaited_once()
+        instance.aclose.assert_awaited_once()
+
+    def test_session_file_reaches_the_controller_as_a_path(
+        self, monkeypatch, no_real_server, mock_browser_controller
+    ):
+        run_cli(
+            monkeypatch, "--auto-approve", "--headless", "--session-file", "state.json"
+        )
+
+        mock_browser_controller.assert_called_once_with(
+            headless=True, cdp_url=None, session_file=Path("state.json")
+        )
+
+    def test_without_flag_no_browser_is_built(
+        self, monkeypatch, no_real_server, mock_browser_controller
+    ):
+        run_cli(monkeypatch)
+
+        mock_browser_controller.assert_not_called()
+        assert no_real_server.call_args.args[0].browser is None
+
+    def test_start_failure_aborts_before_serving_and_releases_browser(
+        self, monkeypatch, no_real_server, mock_browser_controller
+    ):
+        instance = mock_browser_controller.return_value
+        instance.start = AsyncMock(side_effect=RuntimeError("CDP unreachable"))
+
+        with pytest.raises(RuntimeError, match="CDP unreachable"):
+            run_cli(monkeypatch, "--auto-approve", "--cdp-url", self.CDP_URL)
+
+        no_real_server.assert_not_called()
+        instance.aclose.assert_awaited_once()
+
+    def test_browser_closes_even_when_manager_close_fails(
+        self, monkeypatch, no_real_server, mock_browser_controller
+    ):
+        monkeypatch.setattr(
+            SessionManager,
+            "aclose",
+            AsyncMock(side_effect=RuntimeError("session refused to close")),
+        )
+
+        with pytest.raises(RuntimeError, match="session refused to close"):
+            run_cli(monkeypatch, "--auto-approve", "--cdp-url", self.CDP_URL)
+
+        mock_browser_controller.return_value.aclose.assert_awaited_once()
+
+    def test_actionable_start_failure_exits_cleanly_without_traceback(
+        self, monkeypatch, capsys, no_real_server, mock_browser_controller
+    ):
+        instance = mock_browser_controller.return_value
+        instance.start = AsyncMock(
+            side_effect=fail("user_action_required", "Install Playwright first.")
+        )
+        monkeypatch.setattr(
+            sys, "argv", ["cool-colab-mcp", "--auto-approve", "--cdp-url", self.CDP_URL]
+        )
+
+        with pytest.raises(SystemExit) as excinfo:
+            cool_colab_mcp.main()
+
+        assert excinfo.value.code == 1
+        assert "Install Playwright first." in capsys.readouterr().err
+        no_real_server.assert_not_called()
