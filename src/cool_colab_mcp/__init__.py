@@ -22,7 +22,9 @@ import tempfile
 from pathlib import Path
 
 from cool_colab_mcp import doctor, process_registry
-from cool_colab_mcp.constants import LOG_DIR_PREFIX
+from cool_colab_mcp.browser.controller import BrowserController
+from cool_colab_mcp.constants import CDP_URL_EXAMPLE, LOG_DIR_PREFIX
+from cool_colab_mcp.errors import ToolFailed
 from cool_colab_mcp.logging_setup import init_logging
 from cool_colab_mcp.server import build_server
 from cool_colab_mcp.sessions.manager import SessionManager
@@ -65,13 +67,50 @@ def parse_args(v: list[str]) -> argparse.Namespace:
         action="store_true",
         help="log at DEBUG level instead of INFO",
     )
+    parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="open notebook tabs in a managed browser that verifies and approves "
+        "Colab's MCP connect dialog (without this, tabs open via the system "
+        "browser and the user clicks Connect themselves)",
+    )
+    parser.add_argument(
+        "--cdp-url",
+        help="with --auto-approve: attach to a Chrome the operator started and "
+        f"signed into (e.g. {CDP_URL_EXAMPLE}) instead of launching one",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="with --auto-approve: run the managed browser headless",
+    )
+    parser.add_argument(
+        "--session-file",
+        type=Path,
+        help="with --auto-approve: storage-state JSON exported from a signed-in "
+        "browser, for machines without a display; treat the file as a credential",
+    )
     subcommands = parser.add_subparsers(dest="command")
     subcommands.add_parser(
         "doctor",
         help="check the local environment (versions, directories, port binding) "
         "and report each item as pass/fail",
     )
-    return parser.parse_args(v)
+    args = parser.parse_args(v)
+    dependent = {
+        "--cdp-url": args.cdp_url,
+        "--headless": args.headless,
+        "--session-file": args.session_file,
+    }
+    if not args.auto_approve:
+        stray = [flag for flag, value in dependent.items() if value]
+        if stray:
+            parser.error(f"{', '.join(stray)} require(s) --auto-approve")
+    elif args.cdp_url and (args.headless or args.session_file):
+        # An attached browser is whatever the operator launched: we can neither
+        # make it headless nor inject an exported session into it.
+        parser.error("--cdp-url cannot be combined with --headless or --session-file")
+    return args
 
 
 def print_running() -> None:
@@ -106,11 +145,31 @@ async def main_async(args: argparse.Namespace | None = None) -> None:
         return
     # Entries from crashed runs would otherwise accumulate forever.
     process_registry.prune_dead()
-    manager = SessionManager()
+    browser = None
+    if args.auto_approve:
+        browser = BrowserController(
+            headless=args.headless,
+            cdp_url=args.cdp_url,
+            session_file=args.session_file,
+        )
+        try:
+            await browser.start()
+        except BaseException:
+            # start() can fail half-way (e.g. CDP unreachable after Playwright
+            # started); release what it did acquire before propagating.
+            await browser.aclose()
+            raise
+    manager = SessionManager(browser=browser)
     try:
         await build_server(manager, args.client_oauth_config).run_async()
     finally:
-        await manager.aclose()
+        # The manager never owns the browser's lifecycle; we constructed it —
+        # and it must close even when a session refuses to (nested finally).
+        try:
+            await manager.aclose()
+        finally:
+            if browser is not None:
+                await browser.aclose()
 
 
 def main() -> None:
@@ -123,4 +182,10 @@ def main() -> None:
         return
     if args.command == "doctor":
         sys.exit(doctor.main(args.log))
-    asyncio.run(main_async(args))
+    try:
+        asyncio.run(main_async(args))
+    except ToolFailed as exc:
+        # Startup failures with an operator remedy (e.g. Playwright missing, no
+        # session file) print their instruction, not a traceback.
+        print(exc.error.message, file=sys.stderr)
+        sys.exit(1)
