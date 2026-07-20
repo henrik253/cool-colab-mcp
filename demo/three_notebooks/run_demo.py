@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import os
+import subprocess
 from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any, Literal
@@ -12,6 +13,7 @@ from fastmcp import Client
 from pydantic import BaseModel, field_validator, model_validator
 
 from cool_colab_mcp.auth import ensure_credentials, run_consent_flow
+from cool_colab_mcp.browser.controller import BrowserController
 from constants import (
     COMMANDS,
     CPU_COUNT,
@@ -22,14 +24,30 @@ from constants import (
     NOTEBOOK_DIRS_ENV,
     NOTEBOOK_SUFFIX,
     PLACEHOLDER_MARKER,
+    LOGIN_POLL_S,
+    LOGIN_TIMEOUT_S,
+    APP_READY_MARKERS,
+    CDP_URL,
+    CHROME_APP,
+    CHROME_DEBUG_PORT,
+    CHROME_PROFILE_DIR,
     RUNTIME_DIR,
+    SESSION_CHECK_POLLS,
     RUNTIME_PROFILES,
+    SIGN_IN_MARKER,
     UPLOAD_DIRS_ENV,
     UPLOAD_FILENAME,
+)
+from cool_colab_mcp.constants import (
+    BROWSER_PROFILE_DIR_NAME,
+    COLAB,
+    SCRATCH_PATH,
+    SESSION_FILE_NAME,
 )
 from cool_colab_mcp.runtime.client import RuntimeClient
 from cool_colab_mcp.server import build_server
 from cool_colab_mcp.sessions.manager import SessionManager
+from cool_colab_mcp.storage import base_dir
 
 DEMO_DIR = Path(__file__).resolve().parent
 UPLOAD_FILE = DEMO_DIR / "assets" / "test-upload.txt"
@@ -124,6 +142,145 @@ def assignments(config: DemoConfig) -> None:
     records = RuntimeClient(credentials).list_assignments()
     safe = [{"endpoint": record["endpoint"]} for record in records]
     print(json.dumps({"assignments": safe}, indent=2))
+
+
+def launch_chrome() -> None:
+    """Start the operator's own Chrome with a debug port, then let them sign in.
+
+    Playwright-launched browsers report navigator.webdriver, and Google refuses
+    sign-in to them. This Chrome is launched normally — no automation flags — so
+    signing in works; the demo attaches to it afterwards with --cdp-url. Chrome
+    rejects remote debugging on the default profile, hence the dedicated one.
+    """
+    profile = base_dir() / CHROME_PROFILE_DIR
+    profile.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            "open",
+            "-na",
+            CHROME_APP,
+            "--args",
+            f"--remote-debugging-port={CHROME_DEBUG_PORT}",
+            f"--user-data-dir={profile}",
+            f"{COLAB}{SCRATCH_PATH}",
+        ],
+        check=True,
+    )
+    print(
+        f"Chrome launched with its own profile at {profile}.\n"
+        "Sign in to Google in that window (it is a normal Chrome, so sign-in "
+        "works), then run the live phases with:\n"
+        f"  --auto-approve --cdp-url {CDP_URL}",
+        flush=True,
+    )
+
+
+def session_path(explicit: str | None) -> Path:
+    return Path(explicit) if explicit else base_dir() / SESSION_FILE_NAME
+
+
+async def export_session(cdp_url: str, path: Path) -> None:
+    """Copy the session out of the Chrome you signed into, for a headless server.
+
+    The file authenticates as you with no password or 2FA. Keep it 0600, never
+    commit it, and re-export when it expires.
+    """
+    browser = BrowserController(cdp_url=cdp_url)
+    await browser.start()
+    try:
+        count = await browser.export_session(path)
+        print(
+            f"Exported {count} cookies to {path} (mode 0600).\n"
+            "This file authenticates as you: copy it to the server over scp, keep "
+            "it out of git and images, and re-export when it stops working.",
+            flush=True,
+        )
+    finally:
+        await browser.aclose()
+
+
+async def session_check(path: Path, headless: bool = True) -> bool:
+    """Report whether an exported session still signs in, before a run depends on it."""
+    browser = BrowserController(headless=headless, session_file=path)
+    await browser.start()
+    try:
+        page = await browser.open_page(f"{COLAB}{SCRATCH_PATH}")
+        for _ in range(SESSION_CHECK_POLLS):
+            if await signed_in(page):
+                print(f"Session at {path}: valid (signed in).", flush=True)
+                return True
+            await asyncio.sleep(LOGIN_POLL_S)
+        print(
+            f"Session at {path}: EXPIRED or invalid. Re-run 'chrome', sign in, "
+            "then 'export-session'.",
+            flush=True,
+        )
+        return False
+    finally:
+        await browser.aclose()
+
+
+class WindowClosed(RuntimeError):
+    """The operator closed the sign-in window."""
+
+
+async def signed_in(page) -> bool:
+    """Whether Colab shows a signed-in session.
+
+    Only meaningful once the app shell has rendered: a blank page trivially lacks the
+    sign-in prompt, so checking too early reports success for a signed-out profile.
+    """
+    try:
+        text = await page.evaluate("(document.body.innerText||'')")
+    except Exception as exc:  # the window went away mid-poll
+        if "closed" in str(exc).lower():
+            raise WindowClosed(str(exc)) from None
+        raise
+    if not all(marker in text for marker in APP_READY_MARKERS):
+        return False
+    return SIGN_IN_MARKER not in text
+
+
+async def browser_login() -> bool:
+    """Open the managed browser so the operator signs in to Google once.
+
+    This browser is NOT the operator's everyday Chrome: it keeps its own persistent
+    profile, so the sign-in must happen in this window. Afterwards --auto-approve runs
+    are unattended. Only the operator ever types their credentials.
+    """
+    browser = BrowserController(headless=False)
+    await browser.start()
+    try:
+        page = await browser.open_page(f"{COLAB}{SCRATCH_PATH}")
+        print(
+            "A Colab window is open. This is a separate browser from your everyday "
+            "Chrome, so sign in to Google inside that window.\n"
+            f"Waiting up to {LOGIN_TIMEOUT_S}s; the window closes once sign-in is "
+            "detected.",
+            flush=True,
+        )
+        deadline = asyncio.get_running_loop().time() + LOGIN_TIMEOUT_S
+        while asyncio.get_running_loop().time() < deadline:
+            try:
+                if await signed_in(page):
+                    print(
+                        "Signed in. The session is stored in the browser profile at "
+                        f"{base_dir() / BROWSER_PROFILE_DIR_NAME}",
+                        flush=True,
+                    )
+                    return True
+            except WindowClosed:
+                print(
+                    "The sign-in window was closed before sign-in completed; "
+                    "re-run 'login' and leave the window open.",
+                    flush=True,
+                )
+                return False
+            await asyncio.sleep(LOGIN_POLL_S)
+        print("Timed out waiting for sign-in; re-run 'login' to try again.", flush=True)
+        return False
+    finally:
+        await browser.aclose()
 
 
 async def call(client: Client, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -272,7 +429,12 @@ async def verify_uploads(
 
 
 async def live_phase(
-    config: DemoConfig, phase: Literal["prepare", "configure", "verify-upload"]
+    config: DemoConfig,
+    phase: Literal["prepare", "configure", "verify-upload"],
+    auto_approve: bool = False,
+    headless: bool = False,
+    cdp_url: str | None = None,
+    session_file: Path | None = None,
 ) -> None:
     os.environ[UPLOAD_DIRS_ENV] = str(UPLOAD_FILE.parent)
     os.environ[NOTEBOOK_DIRS_ENV] = os.pathsep.join(
@@ -283,7 +445,16 @@ async def live_phase(
             }
         )
     )
-    manager = SessionManager()
+    browser = None
+    if auto_approve:
+        browser = BrowserController(
+            headless=headless, cdp_url=cdp_url, session_file=session_file
+        )
+        await browser.start()
+        print(
+            "Managed browser started; Colab MCP dialogs will be approved automatically."
+        )
+    manager = SessionManager(browser=browser)
     server = build_server(manager, config.oauth_config_path)
     try:
         async with AsyncExitStack() as stack:
@@ -313,6 +484,8 @@ async def live_phase(
             print(json.dumps({"verification": results}, indent=2))
     finally:
         await manager.aclose()
+        if browser is not None:
+            await browser.aclose()
 
 
 def parse_args() -> argparse.Namespace:
@@ -322,6 +495,38 @@ def parse_args() -> argparse.Namespace:
         choices=COMMANDS,
     )
     parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help=(
+            "open notebook tabs in a managed Chromium that accepts Colab's MCP "
+            "dialog automatically. The first run needs a manual Google sign-in in "
+            "that window; the profile is reused afterwards."
+        ),
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="run the managed browser headless (only after signing in once)",
+    )
+    parser.add_argument(
+        "--session-file",
+        default=None,
+        help=(
+            "browser session exported with 'export-session'. Lets a headless, "
+            "display-less server run signed in: Google only checks for automation "
+            "at sign-in, not afterwards. Treat the file as a credential."
+        ),
+    )
+    parser.add_argument(
+        "--cdp-url",
+        default=None,
+        help=(
+            "attach to a Chrome you started yourself (see the 'chrome' command) "
+            f"instead of launching one, e.g. {CDP_URL}. Google refuses sign-in in "
+            "automated browsers, so this is how a real signed-in session is used."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -334,10 +539,21 @@ def main() -> None:
         authenticate(config)
     elif args.command == "auth-check":
         check_auth(config)
+    elif args.command == "login":
+        asyncio.run(browser_login())
+    elif args.command == "chrome":
+        launch_chrome()
+    elif args.command == "export-session":
+        asyncio.run(
+            export_session(args.cdp_url or CDP_URL, session_path(args.session_file))
+        )
+    elif args.command == "session-check":
+        ok = asyncio.run(session_check(session_path(args.session_file)))
+        raise SystemExit(0 if ok else 1)
     elif args.command == "assignments":
         assignments(config)
     else:
-        asyncio.run(live_phase(config, args.command))
+        asyncio.run(live_phase(config, args.command, args.auto_approve, args.headless))
 
 
 if __name__ == "__main__":

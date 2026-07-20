@@ -429,6 +429,73 @@ Then:
 
 The controller must never click generic approval or consent buttons without verification.
 
+### Verified mechanism (empirically established 2026-07-16)
+
+Established by reading Colab's public frontend bundle
+(`ssl.gstatic.com/colaboratory-static/common/<hash>/external_binary_es6.js`) and by a
+headless end-to-end spike against the real Colab frontend plus our real
+`ColabWebSocketServer`. Re-verify if Colab ships a UI change.
+
+**The connect flow.** Colab allowlists the `mcpProxyToken` / `mcpProxyPort` hash params.
+On init it copies them into `sessionStorage` (`mcp_proxy_token`, `mcp_proxy_port`), then —
+if the `enable_colab_mcp_integration` flag is on and a token is present — auto-executes the
+command `connect-local-mcp` ("Connect to a local Colab MCP server"). That command's handler
+*unconditionally* awaits the dialog before connecting; on accept it opens:
+
+```text
+ws://localhost:<port>/?access_token=<token>      subprotocol: mcp
+```
+
+which is exactly what `ColabWebSocketServer._validate_authorization` accepts.
+
+**The popup cannot be bypassed.** There is no first-party auto-connect path:
+
+- the command handler always awaits the dialog — no flag, param, or storage key skips it;
+- the dialog has no "remember / always allow" affordance, so it reappears on every page
+  load; `sessionStorage` only *prefills* it;
+- the only dialog-free entry point is a `TEST_ONLY.connect()` hook on the connector
+  instance. Reaching it means using a private frontend API to bypass a consent gate, which
+  §14 and the security rules forbid. **We do not use it.**
+
+Therefore the connect button must be clicked. This is legitimate automation of the user's
+own consent, for a connection they initiated, and it is gated on verification below.
+
+**Two gates, not one.** Beyond Colab's dialog, Chrome blocks a public origin from reaching
+localhost (`net::ERR_BLOCKED_BY_LOCAL_NETWORK`). Modern Chrome uses **Local Network
+Access**, a *permission* — the older Private Network Access response headers
+(`Access-Control-Allow-Private-Network`) do **not** satisfy it. The managed browser must
+grant the `local-network-access` permission, scoped to the Colab origin only. Without this
+the click succeeds and the WebSocket still never arrives.
+
+**DOM surface** (Colab-specific — keep in `browser/adapters/colab/`):
+
+| Element | Selector |
+|---|---|
+| Dialog | `mwc-dialog.local-mcp-connect-dialog[open]` |
+| Token field (readonly, prefilled) | `colab-local-mcp-connect-dialog #token-field` → `<token>&<port>` |
+| Connect button | `mwc-dialog.local-mcp-connect-dialog md-text-button[dialogaction="ok"]` |
+| Cancel button | same, `[dialogaction="cancel"]` |
+
+Notes: the `mwc-dialog` host has no layout box (its surface lives in the shadow root), so
+wait for `state="attached"`, never visibility. The dialog sets `allowCloseOnEnter`, so
+Enter is equivalent to clicking Connect. Shadow roots are `mode: "open"`, so Playwright's
+CSS engine pierces them without special syntax.
+
+**Verification before clicking** satisfies the requirements above cheaply, because the
+dialog's readonly token field contains exactly `<token>&<port>`: compare it against the
+session's own token and port, and confirm `location.origin` is the Colab origin. If either
+differs, refuse to click. Success is defined as the **server-side** `connection_live` event
+firing — never "the click landed".
+
+**Failure modes to surface as `user_action_required`:** dialog never appears (Google may
+have disabled `enable_colab_mcp_integration`, or the UI changed); verification mismatch;
+click lands but no handshake (usually the missing `local-network-access` permission);
+close code `1013` = another tab already holds that server ("Only one notebook session can
+be connected at a time" — our one-server-per-notebook design avoids this).
+
+**Red herring:** the `connectLocal` hash param and `connectLocalConnectionUrl` preference
+belong to Colab's *local Jupyter runtime* feature, not MCP. They do nothing here.
+
 ## 12. Automated Runtime-Switch Orchestration
 
 ### Goal

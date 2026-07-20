@@ -138,3 +138,18 @@ MOVE_CELL = "move_cell"
 
 # Keys under which frontend results may carry a cell id
 CELL_ID_KEYS = ("newCellId",)
+
+# Managed browser (plan.md §10/§11)
+BROWSER_PROFILE_DIR_NAME = "browser-profile"
+# Chrome's Local Network Access permission. A public origin (Colab) reaching localhost
+# needs this; the older Private Network Access response headers do NOT satisfy it.
+LOCAL_NETWORK_PERMISSION = "local-network-access"
+DIALOG_TIMEOUT_MS = 60_000
+# Real Google Chrome rather than Playwright's bundled Chromium: Google refuses
+# sign-in in unbranded/automated browsers ("this browser may not be secure").
+CHROME_CHANNEL = "chrome"
+# Playwright sets this by default; it is the flag Google's sign-in check trips on.
+AUTOMATION_FLAG = "--enable-automation"
+# An exported browser session (cookies + localStorage). Treat as a credential:
+# it authenticates as the signed-in user with no password or 2FA.
+SESSION_FILE_NAME = "colab-session.json"

@@ -115,21 +115,30 @@ async def open_connection(
         session.notebook_id,
         session.port,
     )
-    webbrowser.open_new(
+    tab_url = (
         f"{url}{separator}{TAB_DEDUP_PARAM}={session.port}"
         f"#{PROXY_TOKEN_PARAM}={session.token}&{PROXY_PORT_PARAM}={session.port}"
     )
     await ctx.report_progress(
         progress=1, total=3, message=f"Opened Colab notebook: {url}"
     )
-    await ctx.report_progress(
-        progress=2,
-        total=3,
-        message=(
+    if manager.browser is None:
+        webbrowser.open_new(tab_url)
+        waiting = (
             "Waiting for user to connect in Colab - "
             f"will wait for {UI_CONNECTION_TIMEOUT:.0f}s"
-        ),
-    )
+        )
+    else:
+        # Managed browser: open the tab and accept Colab's MCP dialog ourselves, after
+        # verifying it belongs to this session (plan.md §11).
+        try:
+            await manager.browser.open_and_approve(
+                session.notebook_id, tab_url, session.token, session.port
+            )
+        except ToolFailed as failure:
+            return failure.error.as_result()
+        waiting = "Approved the Colab MCP dialog - waiting for the connection"
+    await ctx.report_progress(progress=2, total=3, message=waiting)
     connected = await session.await_connection(UI_CONNECTION_TIMEOUT)
     logger.info(
         "Session '%s' %s",
