@@ -34,6 +34,7 @@ the integration refactor sweep are complete.
 | README manual setup steps | 1 | — | ✅ **Merged** to `integration` (PR #20, `0012b34`) |
 | GPU runtime-type binding + 1–2 notebook demo configs | 12/demo | — | ✅ **Merged** directly to `main` (PR #21, `4d5d25e`); reconciled into `integration` here |
 | Agent-facing feature guide (docs/agent-guide.md + README “For agents”) | docs (out-of-plan, user-requested) | — | ✅ **Merged** to `integration` (PR #23, `abb7c1a`) |
+| Drive-mount consent watcher (`--auto-drive`, opt-in) | 13/demo | — | ✅ **Merged** directly to `main` (PR #26, `0c38c1c`) by the user; recorded here retroactively, E402 lint fixed on `integration` |
 
 Integration PRs #15 and #19 are merged. PR #21 (runtime-type UI binding for GPU notebooks,
 `config.2nb.json`/`config.t4.json`, demo hardening from the remote Linux server) went to `main`
