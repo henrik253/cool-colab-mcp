@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 import subprocess
+import sys
 from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any, Literal
@@ -30,6 +31,7 @@ from constants import (
     CDP_URL,
     CHROME_APP,
     CHROME_DEBUG_PORT,
+    CHROME_LINUX_BIN,
     CHROME_PROFILE_DIR,
     RUNTIME_DIR,
     SESSION_CHECK_POLLS,
@@ -82,18 +84,18 @@ class DemoConfig(BaseModel):
     notebooks: list[NotebookConfig]
 
     @model_validator(mode="after")
-    def exactly_three_distinct_notebooks(self) -> "DemoConfig":
-        if len(self.notebooks) != NOTEBOOK_COUNT:
-            raise ValueError("the demo requires exactly three notebooks")
+    def distinct_notebooks(self) -> "DemoConfig":
+        if not 1 <= len(self.notebooks) <= NOTEBOOK_COUNT:
+            raise ValueError("the demo requires one to three notebooks")
         ids = [notebook.notebook_id for notebook in self.notebooks]
         if len(set(ids)) != len(ids):
             raise ValueError("notebook_id values must be unique")
         profiles = [notebook.runtime_profile for notebook in self.notebooks]
         if (
-            profiles.count(CPU_PROFILE) != CPU_COUNT
-            or profiles.count(GPU_PROFILE) != GPU_COUNT
+            profiles.count(CPU_PROFILE) > CPU_COUNT
+            or profiles.count(GPU_PROFILE) > GPU_COUNT
         ):
-            raise ValueError("the demo requires two prototype-cpu and one debug-gpu")
+            raise ValueError("at most two prototype-cpu and one debug-gpu")
         return self
 
 
@@ -154,18 +156,21 @@ def launch_chrome() -> None:
     """
     profile = base_dir() / CHROME_PROFILE_DIR
     profile.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            "open",
-            "-na",
-            CHROME_APP,
-            "--args",
-            f"--remote-debugging-port={CHROME_DEBUG_PORT}",
-            f"--user-data-dir={profile}",
-            f"{COLAB}{SCRATCH_PATH}",
-        ],
-        check=True,
-    )
+    chrome_args = [
+        f"--remote-debugging-port={CHROME_DEBUG_PORT}",
+        f"--user-data-dir={profile}",
+        f"{COLAB}{SCRATCH_PATH}",
+    ]
+    if sys.platform == "darwin":
+        subprocess.run(["open", "-na", CHROME_APP, "--args", *chrome_args], check=True)
+    else:
+        # Detach so Chrome outlives this one-shot command.
+        subprocess.Popen(
+            [CHROME_LINUX_BIN, *chrome_args],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
     print(
         f"Chrome launched with its own profile at {profile}.\n"
         "Sign in to Google in that window (it is a normal Chrome, so sign-in "
@@ -308,12 +313,11 @@ async def register_and_open(config: DemoConfig, mcp_clients: list[Client]) -> No
                 "preferred_runtime": notebook.runtime_profile,
             },
         )
-    await asyncio.gather(
-        *(
-            call(client, "open_notebook", {"notebook_id": notebook.notebook_id})
-            for client, notebook in zip(mcp_clients, config.notebooks, strict=True)
-        )
-    )
+    # One tab at a time: opening all notebooks concurrently can overwhelm the
+    # browser on machines without GPU rendering (the MCP dialog then never
+    # becomes clickable and the whole desktop may freeze).
+    for client, notebook in zip(mcp_clients, config.notebooks, strict=True):
+        await call(client, "open_notebook", {"notebook_id": notebook.notebook_id})
 
 
 async def configure_runtimes(
@@ -428,9 +432,80 @@ async def verify_uploads(
     return results
 
 
+async def _run_and_sync_one(client: Client, notebook: NotebookConfig) -> dict[str, Any]:
+    """Run all code cells in one notebook, then sync to local.
+
+    Deliberately no connect_runtime first: it executes its status probe through
+    run_code, which inserts a cell that is never removed — the sync would write
+    that probe cell into the local .ipynb. Running the first document cell makes
+    Colab connect the runtime itself; it only bears the spin-up latency.
+    """
+    nid = notebook.notebook_id
+    cells_payload = await call(client, "get_cells", {"notebook_id": nid})
+    if isinstance(cells_payload, list):
+        cells = cells_payload
+    else:
+        cells = cells_payload.get("cells", [])
+    if not isinstance(cells, list):
+        cells = []
+    cell_results = []
+    for cell in cells:
+        if cell.get("cell_type") != "code":
+            continue
+        cell_id = cell.get("id") or cell.get("cellId")
+        if not isinstance(cell_id, str):
+            continue
+        run_result = await call(
+            client, "run_code_cell", {"notebook_id": nid, "cellId": cell_id}
+        )
+        cell_results.append({"cellId": cell_id, "result": run_result})
+    sync = await call(client, "sync_notebook_to_local", {"notebook_id": nid})
+    return {
+        "notebook_id": nid,
+        "cells_run": len(cell_results),
+        "cell_results": cell_results,
+        "sync": sync,
+    }
+
+
+async def run_and_sync(
+    config: DemoConfig, mcp_clients: list[Client]
+) -> list[dict[str, Any]]:
+    """Run all code cells in all notebooks concurrently, then sync each to local."""
+    return list(
+        await asyncio.gather(
+            *(
+                _run_and_sync_one(client, notebook)
+                for client, notebook in zip(mcp_clients, config.notebooks, strict=True)
+            )
+        )
+    )
+
+
+async def profile_login_check() -> bool:
+    """Headless check of the persistent browser profile for a valid Google session.
+
+    Returns True if already signed in; False if sign-in is needed. Does not modify
+    the profile — call browser_login() if this returns False.
+    """
+    browser = BrowserController(headless=True)
+    await browser.start()
+    try:
+        page = await browser.open_page(f"{COLAB}{SCRATCH_PATH}")
+        for _ in range(SESSION_CHECK_POLLS):
+            if await signed_in(page):
+                print("Persistent browser profile: signed in.", flush=True)
+                return True
+            await asyncio.sleep(LOGIN_POLL_S)
+        print("Persistent browser profile: not signed in.", flush=True)
+        return False
+    finally:
+        await browser.aclose()
+
+
 async def live_phase(
     config: DemoConfig,
-    phase: Literal["prepare", "configure", "verify-upload"],
+    phase: Literal["prepare", "configure", "verify-upload", "run-notebooks"],
     auto_approve: bool = False,
     headless: bool = False,
     cdp_url: str | None = None,
@@ -479,6 +554,10 @@ async def live_phase(
             if phase == "configure":
                 results = await configure_runtimes(config, mcp_clients)
                 print(json.dumps({"runtime_requests": results}, indent=2))
+                return
+            if phase == "run-notebooks":
+                results = await run_and_sync(config, mcp_clients)
+                print(json.dumps({"results": results}, indent=2))
                 return
             results = await verify_uploads(config, mcp_clients)
             print(json.dumps({"verification": results}, indent=2))
@@ -540,7 +619,8 @@ def main() -> None:
     elif args.command == "auth-check":
         check_auth(config)
     elif args.command == "login":
-        asyncio.run(browser_login())
+        ok = asyncio.run(browser_login())
+        raise SystemExit(0 if ok else 1)
     elif args.command == "chrome":
         launch_chrome()
     elif args.command == "export-session":
@@ -552,8 +632,68 @@ def main() -> None:
         raise SystemExit(0 if ok else 1)
     elif args.command == "assignments":
         assignments(config)
+    elif args.command == "check-login":
+        ok = asyncio.run(profile_login_check())
+        raise SystemExit(0 if ok else 1)
+    elif args.command == "run":
+
+        async def _run() -> None:
+            # Each credential source has its own recovery path; an interactive
+            # sign-in only ever helps the persistent-profile case.
+            if args.cdp_url:
+                # The operator owns (and signed into) the attached Chrome; the
+                # persistent profile is irrelevant, so there is nothing to check.
+                pass
+            elif args.session_file:
+                if not await session_check(
+                    session_path(args.session_file), headless=True
+                ):
+                    # Signing in here would refresh the profile, not this file —
+                    # the run would still replay the stale session and fail.
+                    raise SystemExit(
+                        "The session file is expired. On a machine with a "
+                        "display, re-run 'chrome', sign in, 'export-session', "
+                        "and copy the file here."
+                    )
+            elif not await profile_login_check():
+                if args.headless:
+                    raise SystemExit(
+                        "Not signed in, and --headless cannot open a sign-in "
+                        "window. Run 'login' once with a display, or use "
+                        "--session-file with a session exported elsewhere."
+                    )
+                print(
+                    "Not logged in. Opening browser for Google sign-in...", flush=True
+                )
+                if not await browser_login():
+                    raise SystemExit(
+                        "Login was not completed. Re-run 'run' to try again."
+                    )
+            await live_phase(
+                config,
+                "run-notebooks",
+                auto_approve=args.auto_approve,
+                headless=args.headless,
+                cdp_url=args.cdp_url,
+                session_file=session_path(args.session_file)
+                if args.session_file
+                else None,
+            )
+
+        asyncio.run(_run())
     else:
-        asyncio.run(live_phase(config, args.command, args.auto_approve, args.headless))
+        asyncio.run(
+            live_phase(
+                config,
+                args.command,
+                args.auto_approve,
+                args.headless,
+                cdp_url=args.cdp_url,
+                session_file=session_path(args.session_file)
+                if args.session_file
+                else None,
+            )
+        )
 
 
 if __name__ == "__main__":

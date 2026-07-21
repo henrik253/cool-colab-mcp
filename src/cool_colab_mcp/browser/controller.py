@@ -23,7 +23,7 @@ import logging
 import os
 from pathlib import Path
 
-from cool_colab_mcp.browser.adapters.colab import approval
+from cool_colab_mcp.browser.adapters.colab import approval, runtime_type
 from cool_colab_mcp.constants import (
     AUTOMATION_FLAG,
     BROWSER_PROFILE_DIR_NAME,
@@ -114,6 +114,9 @@ class BrowserController:
                 channel=CHROME_CHANNEL if self.use_chrome else None,
                 # Google's sign-in refuses browsers advertising automation.
                 ignore_default_args=[AUTOMATION_FLAG],
+                # On displays without GPU acceleration (xrdp/VNC, no DRI3),
+                # Chrome's GPU process hangs and the window never appears.
+                args=["--disable-gpu"],
             )
         # Chrome's Local Network Access gate gives Colab (a public origin) permission to
         # reach our localhost server. Scoped to the Colab origin only; without it the
@@ -156,6 +159,27 @@ class BrowserController:
         logger.info("opened notebook tab (notebook_id=%s, port=%d)", notebook_id, port)
         await approval.approve(page, token, port, DIALOG_TIMEOUT_MS)
         logger.info("approved MCP dialog (notebook_id=%s)", notebook_id)
+
+    async def set_runtime_type(self, notebook_id: str, accelerator: str) -> None:
+        """Bind this notebook's already-open tab to `accelerator` via the UI.
+
+        The tab must have been opened with `open_and_approve` first. Selecting a
+        GPU here is what actually puts the kernel on a GPU; the OAuth assignment
+        API alone leaves the visible tab on CPU.
+        """
+        page = self._pages.get(notebook_id)
+        if page is None:
+            raise fail(
+                "not_connected",
+                f"No open tab for notebook '{notebook_id}'; open it before setting "
+                "its runtime type.",
+            )
+        await runtime_type.select_accelerator(page, accelerator, DIALOG_TIMEOUT_MS)
+        logger.info(
+            "set runtime type (notebook_id=%s, accelerator=%s)",
+            notebook_id,
+            accelerator,
+        )
 
     async def export_session(self, path: Path) -> int:
         """Write this browser's cookies/localStorage to `path`, owner-readable only.
