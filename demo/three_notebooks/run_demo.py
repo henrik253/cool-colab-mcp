@@ -510,6 +510,7 @@ async def live_phase(
     headless: bool = False,
     cdp_url: str | None = None,
     session_file: Path | None = None,
+    auto_drive: bool = False,
 ) -> None:
     os.environ[UPLOAD_DIRS_ENV] = str(UPLOAD_FILE.parent)
     os.environ[NOTEBOOK_DIRS_ENV] = os.pathsep.join(
@@ -523,7 +524,10 @@ async def live_phase(
     browser = None
     if auto_approve:
         browser = BrowserController(
-            headless=headless, cdp_url=cdp_url, session_file=session_file
+            headless=headless,
+            cdp_url=cdp_url,
+            session_file=session_file,
+            auto_drive=auto_drive,
         )
         await browser.start()
         print(
@@ -581,6 +585,15 @@ def parse_args() -> argparse.Namespace:
             "open notebook tabs in a managed Chromium that accepts Colab's MCP "
             "dialog automatically. The first run needs a manual Google sign-in in "
             "that window; the profile is reused afterwards."
+        ),
+    )
+    parser.add_argument(
+        "--auto-drive",
+        action="store_true",
+        help=(
+            "auto-approve Google Drive mount consent (Colab dialog + OAuth popup) "
+            "for cells that call drive.mount. Grants notebook code access to your "
+            "Drive files, so it is opt-in and separate from --auto-approve."
         ),
     )
     parser.add_argument(
@@ -678,6 +691,7 @@ def main() -> None:
                 session_file=session_path(args.session_file)
                 if args.session_file
                 else None,
+                auto_drive=args.auto_drive,
             )
 
         asyncio.run(_run())
@@ -692,6 +706,7 @@ def main() -> None:
                 session_file=session_path(args.session_file)
                 if args.session_file
                 else None,
+                auto_drive=args.auto_drive,
             )
         )
 
