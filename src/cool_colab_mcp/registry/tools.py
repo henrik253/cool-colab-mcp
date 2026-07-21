@@ -21,6 +21,7 @@ from fastmcp.dependencies import CurrentContext
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
 
+from cool_colab_mcp.constants import RUNTIME_PROFILES
 from cool_colab_mcp.errors import ToolFailed, fail
 from cool_colab_mcp.notebooks.local import (
     local_notebook_path,
@@ -46,6 +47,18 @@ def register_registry_tools(
 
     def _record_payload(record: NotebookRecord) -> dict:
         return record.model_dump(exclude_none=True)
+
+    def _requested_accelerator(preferred_runtime: str | None) -> str | None:
+        """The GPU/TPU a notebook's profile asks for, or None for CPU-only.
+
+        Accepts either a profile name (e.g. "debug-gpu") or a bare accelerator
+        (e.g. "T4"). Returns None when the target is CPU, so the caller skips the
+        runtime-type UI for plain CPU notebooks.
+        """
+        if not preferred_runtime:
+            return None
+        accelerator = RUNTIME_PROFILES.get(preferred_runtime, preferred_runtime)
+        return None if accelerator in ("NONE", "CPU") else accelerator
 
     @mcp.tool
     async def register_notebook(
@@ -152,6 +165,15 @@ def register_registry_tools(
         payload = result.structured_content or {}
         if not payload.get("connected"):
             return result
+        accelerator = _requested_accelerator(record.preferred_runtime)
+        if accelerator and manager.browser is not None:
+            # The OAuth assignment API reserves a GPU VM but does not bind it to
+            # this tab; without driving the runtime-type UI the kernel would
+            # silently fall back to CPU.
+            try:
+                await manager.browser.set_runtime_type(notebook_id, accelerator)
+            except ToolFailed as failure:
+                return failure.error.as_result()
         try:
             await restore_document(
                 manager.get(notebook_id), read_local_notebook(record.local_path)

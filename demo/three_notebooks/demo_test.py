@@ -119,21 +119,26 @@ def demo_config(endpoints: bool = True):
 
 
 @pytest.mark.asyncio
-async def test_register_and_open_routes_three_notebooks_concurrently(monkeypatch):
+async def test_register_and_open_routes_notebooks_sequentially(monkeypatch):
     opened: list[str] = []
-    all_open = asyncio.Event()
+    concurrent = False
 
     async def fake_call(client, tool, arguments):
+        nonlocal concurrent
         if tool == "open_notebook":
-            opened.append(arguments["notebook_id"])
-            if len(opened) == 3:
-                all_open.set()
-            await asyncio.wait_for(all_open.wait(), timeout=1)
+            if opened and opened[-1] == "__open__":
+                concurrent = True  # a prior open had not returned yet
+            opened.append("__open__")
+            await asyncio.sleep(0)  # yield: a concurrent impl would interleave here
+            opened[-1] = arguments["notebook_id"]
         return {}
 
     monkeypatch.setattr(DEMO, "call", fake_call)
     await DEMO.register_and_open(demo_config(), [object(), object(), object()])
-    assert set(opened) == {"cpu-a", "cpu-b", "gpu"}
+    # Opening one tab at a time avoids overwhelming the browser on machines
+    # without GPU rendering, where concurrent opens froze the desktop.
+    assert opened == ["cpu-a", "cpu-b", "gpu"]
+    assert not concurrent
 
 
 @pytest.mark.asyncio
@@ -214,6 +219,82 @@ async def test_verify_upload_rejects_unverified_upload(monkeypatch):
     monkeypatch.setattr(DEMO, "call", fake_call)
     with pytest.raises(RuntimeError, match="upload did not verify"):
         await DEMO.verify_uploads(demo_config(), [object(), object(), object()])
+
+
+@pytest.mark.asyncio
+async def test_run_and_sync_runs_code_cells_and_syncs(monkeypatch):
+    run_calls: list[str] = []
+
+    async def fake_call(client, tool, arguments):
+        if tool == "get_cells":
+            return {
+                "cells": [
+                    {"cell_type": "markdown", "id": "md1", "source": "# Title"},
+                    {"cell_type": "code", "id": "c1", "source": "print('hello')"},
+                    {"cell_type": "code", "id": "c2", "source": "x = 42"},
+                ]
+            }
+        if tool == "run_code_cell":
+            run_calls.append(arguments["cellId"])
+            return {"output": "ok"}
+        if tool == "sync_notebook_to_local":
+            return {"direction": "to_local", "path": "/tmp/nb.ipynb"}
+        return {}
+
+    monkeypatch.setattr(DEMO, "call", fake_call)
+    results = await DEMO.run_and_sync(demo_config(), [object(), object(), object()])
+    assert [r["notebook_id"] for r in results] == ["cpu-a", "cpu-b", "gpu"]
+    assert all(r["cells_run"] == 2 for r in results)
+    assert all(r["sync"]["direction"] == "to_local" for r in results)
+    # markdown cell must be skipped; only c1 and c2 run per notebook
+    assert run_calls.count("c1") == 3
+    assert run_calls.count("c2") == 3
+
+
+@pytest.mark.asyncio
+async def test_run_and_sync_skips_markdown_and_cells_without_id(monkeypatch):
+    run_calls: list[str] = []
+
+    async def fake_call(client, tool, arguments):
+        if tool == "get_cells":
+            return {
+                "cells": [
+                    {"cell_type": "markdown", "id": "md1", "source": "# Title"},
+                    {"cell_type": "code", "source": "print('no id')"},  # no id key
+                    {"cell_type": "code", "id": "code1", "source": "x = 1"},
+                ]
+            }
+        if tool == "run_code_cell":
+            run_calls.append(arguments["cellId"])
+            return {"output": "done"}
+        if tool == "sync_notebook_to_local":
+            return {"direction": "to_local"}
+        return {}
+
+    monkeypatch.setattr(DEMO, "call", fake_call)
+    results = await DEMO.run_and_sync(demo_config(), [object(), object(), object()])
+    # Only code1 is runnable; the no-id cell is skipped
+    assert all(r["cells_run"] == 1 for r in results)
+    assert "md1" not in run_calls
+    assert all(c == "code1" for c in run_calls)
+
+
+@pytest.mark.asyncio
+async def test_run_and_sync_handles_flat_cells_payload(monkeypatch):
+    """get_cells may return the list directly instead of {"cells": [...]}."""
+
+    async def fake_call(client, tool, arguments):
+        if tool == "get_cells":
+            return [{"cell_type": "code", "id": "c1", "source": "1+1"}]
+        if tool == "run_code_cell":
+            return {"output": "2"}
+        if tool == "sync_notebook_to_local":
+            return {"direction": "to_local"}
+        return {}
+
+    monkeypatch.setattr(DEMO, "call", fake_call)
+    results = await DEMO.run_and_sync(demo_config(), [object(), object(), object()])
+    assert all(r["cells_run"] == 1 for r in results)
 
 
 @pytest.mark.asyncio
