@@ -32,3 +32,27 @@ TOKEN_FIELD_SEPARATOR = "&"
 CONNECT_BUTTON = f'{CONNECT_DIALOG} md-text-button[dialogaction="ok"]'
 
 DIALOG_STATE_ATTACHED = "attached"
+
+# Change-runtime-type dialog. Like the connect dialog, its host mwc-dialog has no
+# layout box, and the accelerator radios live inside nested shadow roots (the
+# colab-runtime-attributes-selector component), so they are reached by piercing
+# shadow DOM in JS rather than by a plain Playwright selector.
+RUNTIME_TYPE_DIALOG = "mwc-dialog.change-runtime-type"
+RUNTIME_TYPE_SAVE_BUTTON = f'{RUNTIME_TYPE_DIALOG} md-text-button[dialogaction="ok"]'
+# Switching runtime type on a *connected* notebook raises a confirmation warning
+# ("changing this disconnects the current runtime"). Its OK button and the Save
+# button both use dialogaction="ok", so each is scoped to its own dialog class.
+RUNTIME_WARNING_DIALOG = "mwc-dialog.dismiss-runtime-warning"
+RUNTIME_WARNING_OK_BUTTON = (
+    f'{RUNTIME_WARNING_DIALOG} md-text-button[dialogaction="ok"]'
+)
+# Colab labels the accelerator radios "CPU", "T4 GPU", "L4 GPU", "A100 GPU", ...
+# The command palette entry that opens the dialog, and the one that connects.
+RUNTIME_TYPE_COMMAND = "Change runtime type"
+CONNECT_RUNTIME_COMMAND = "Connect to a hosted runtime"
+COMMAND_PALETTE_KEYS = "Control+Shift+P"
+
+
+def accelerator_radio_label(accelerator: str) -> str:
+    """Map an internal accelerator name to the dialog's radio aria-label."""
+    return "CPU" if accelerator in ("NONE", "CPU") else f"{accelerator} GPU"

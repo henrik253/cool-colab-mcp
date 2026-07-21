@@ -31,14 +31,17 @@ the integration refactor sweep are complete.
 | Local repository notebook sync | 5a | — | ✅ **Merged** to `integration` (PR #12, `0d6b419`) |
 | Live Colab compatibility + output sync | 1/2/8/11 | — | ✅ **Merged** to `integration` (PR #14, `c95bdf3`) |
 | CLI auto-approve wiring (managed browser in the MCP server) | 12 | — | ✅ **Merged** to `integration` (PR #18, `384e9fe`) and to `main` (PR #19) |
-| README manual setup steps | 1 | `feature/readme-setup` | 🟡 This branch |
+| README manual setup steps | 1 | — | ✅ **Merged** to `integration` (PR #20, `0012b34`) |
+| GPU runtime-type binding + 1–2 notebook demo configs | 12/demo | — | ✅ **Merged** directly to `main` (PR #21, `4d5d25e`); reconciled into `integration` here |
 
-Integration PRs #15 and #19 are merged; `main` and `integration` are in sync. A 2026-07-20 run
-on a remote Linux desktop (xrdp) completed a two-notebook end-to-end demo (auto-approve via
-`--cdp-url` attach, execution, local sync) using remote-hardening changes that are still
-uncommitted in that server's workspace; its T4 request was served a CPU runtime because no
-`configure` step ran. Section 1's end-to-end bullet stays open until T4 verification and those
-changes land.
+Integration PRs #15 and #19 are merged. PR #21 (runtime-type UI binding for GPU notebooks,
+`config.2nb.json`/`config.t4.json`, demo hardening from the remote Linux server) went to `main`
+directly, against the feature workflow, and carried no roadmap update; this merge commit
+reconciles it into `integration` and records it here. A 2026-07-20 run on a remote Linux
+desktop (xrdp) completed a two-notebook end-to-end demo (auto-approve via `--cdp-url` attach,
+execution, local sync); its T4 request was served a CPU runtime at the time. Whether the new
+runtime-type binding yields a verified real T4 end-to-end run is still unconfirmed, so section
+1's end-to-end bullet stays open.
 
 ---
 
