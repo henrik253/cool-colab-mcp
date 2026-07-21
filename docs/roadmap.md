@@ -33,6 +33,7 @@ the integration refactor sweep are complete.
 | CLI auto-approve wiring (managed browser in the MCP server) | 12 | — | ✅ **Merged** to `integration` (PR #18, `384e9fe`) and to `main` (PR #19) |
 | README manual setup steps | 1 | — | ✅ **Merged** to `integration` (PR #20, `0012b34`) |
 | GPU runtime-type binding + 1–2 notebook demo configs | 12/demo | — | ✅ **Merged** directly to `main` (PR #21, `4d5d25e`); reconciled into `integration` here |
+| Agent-facing feature guide (docs/agent-guide.md + README “For agents”) | docs (out-of-plan, user-requested) | `feature/agent-guide` | 🟡 This branch |
 
 Integration PRs #15 and #19 are merged. PR #21 (runtime-type UI binding for GPU notebooks,
 `config.2nb.json`/`config.t4.json`, demo hardening from the remote Linux server) went to `main`

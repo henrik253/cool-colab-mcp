@@ -32,6 +32,31 @@ Reliability fixes are cherry-picked with attribution from the
 [SebastianGilPinzon/colab-mcp](https://github.com/SebastianGilPinzon/colab-mcp) fork
 (Apache 2.0).
 
+## For agents — the whole surface in ten lines
+
+If you are an AI agent connected to this server, this is the intended usage; the full
+tool reference and workflows are in [docs/agent-guide.md](docs/agent-guide.md).
+
+- `register_notebook(notebook_id, name, url=… | local_path=…, preferred_runtime=…)` makes
+  a notebook durable — do this once per notebook, then always `open_notebook(notebook_id)`.
+  The registry survives restarts; `list_notebooks()` shows what already exists.
+- Every notebook tool takes `notebook_id`; several notebooks run concurrently, each in
+  its own session. Pass the id explicitly whenever more than one is open.
+- Edit and execute with `add_code_cell` / `run_code_cell` / `get_cells` (and friends);
+  push data in with `upload_file` (chunked, SHA-256-verified) instead of downloading
+  inside the notebook.
+- Persist results: `sync_notebook_to_local(notebook_id)` atomically writes the registered
+  `.ipynb` — do it after every meaningful run, because `close_notebook` deliberately does
+  not sync.
+- Checkpoint with `create_snapshot` before anything risky; `restore_snapshot` brings it
+  back; `export_notebook` writes an `.ipynb` anywhere allowed.
+- Runtimes: `get_runtime_status` / `connect_runtime` report the *verified* hardware;
+  `request_runtime_profile("debug-gpu", …)` switches (profiles: `prototype-cpu`,
+  `debug-gpu` = T4, `training-gpu` = L4) — snapshot first; calling without
+  `assignment_endpoint` safely lists the endpoints to choose from, then retry with one.
+- Errors are structured: `user_action_required` means a human step (sign-in, consent) —
+  relay its remedy and wait; quota/policy denials are outcomes to report, not to retry.
+
 ## Architecture
 
 The MCP server cannot control Colab directly — it bridges your local agent to the Colab
