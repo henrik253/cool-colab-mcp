@@ -10,7 +10,7 @@ implemented together on one branch: `feature/architecture-skeleton`.
 
 Status legend: `[ ]` open · `[x]` done
 
-## Wave status (snapshot 2026-07-15)
+## Wave status (snapshot 2026-07-20)
 
 Per-section bullets are checked in the feature's completing commit. The table distinguishes
 committed, PR, and merged state where that difference matters. All Phase 1 feature branches and
@@ -30,11 +30,18 @@ the integration refactor sweep are complete.
 | Three-notebook live demo | manual verification | — | 🟡 OAuth, tab opening, CPU execution, and uploads verified; T4 verification remains |
 | Local repository notebook sync | 5a | — | ✅ **Merged** to `integration` (PR #12, `0d6b419`) |
 | Live Colab compatibility + output sync | 1/2/8/11 | — | ✅ **Merged** to `integration` (PR #14, `c95bdf3`) |
-| CLI auto-approve wiring (managed browser in the MCP server) | 12 | `feature/cli-auto-approve` | 🟡 Committed; PR into `integration` pending |
+| CLI auto-approve wiring (managed browser in the MCP server) | 12 | — | ✅ **Merged** to `integration` (PR #18, `384e9fe`) and to `main` (PR #19) |
+| README manual setup steps | 1 | — | ✅ **Merged** to `integration` (PR #20, `0012b34`) |
+| GPU runtime-type binding + 1–2 notebook demo configs | 12/demo | — | ✅ **Merged** directly to `main` (PR #21, `4d5d25e`); reconciled into `integration` here |
 
-Final integration PR #15 is open with green CI. The live demo verified OAuth, three-tab opening,
-CPU execution, and direct uploads; its T4 runtime verification remains incomplete. Section 1
-remains open until the full end-to-end path and complete manual setup documentation are finished.
+Integration PRs #15 and #19 are merged. PR #21 (runtime-type UI binding for GPU notebooks,
+`config.2nb.json`/`config.t4.json`, demo hardening from the remote Linux server) went to `main`
+directly, against the feature workflow, and carried no roadmap update; this merge commit
+reconciles it into `integration` and records it here. A 2026-07-20 run on a remote Linux
+desktop (xrdp) completed a two-notebook end-to-end demo (auto-approve via `--cdp-url` attach,
+execution, local sync); its T4 request was served a CPU runtime at the time. Whether the new
+runtime-type binding yields a verified real T4 end-to-end run is still unconfirmed, so section
+1's end-to-end bullet stays open.
 
 ---
 
@@ -66,7 +73,11 @@ parallel branches and must share one persistence implementation. Covered by
 - [ ] Fork runs locally end-to-end against a real Colab notebook (manual verification)
 - [x] Verify the real `add_code_cell` response shape (`{"newCellId": "..."}`) and tighten
       `run_code`'s cell-id parsing (`CELL_ID_KEYS` in constants.py) to that single key
-- [ ] Document the manual setup steps in README.md
+- [x] Document the manual setup steps in README.md: install → MCP-client registration →
+      one-time authentication (browser session via operator-launched Chrome + CDP attach;
+      runtime-API OAuth consent) → unattended/headless operation via exported session file
+      → remote Linux desktop caveats (xrdp `--disable-gpu`, SSH session env, keyring loss)
+      → maintenance (`doctor`, `--list-running`, `--kill-stale`)
 
 **Tests:** existing `session_test.py`, `websocket_server_test.py` pass. The live-demo harness is
 covered offline by `demo/three_notebooks/demo_test.py`
