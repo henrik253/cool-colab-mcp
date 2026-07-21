@@ -23,7 +23,9 @@ import logging
 import os
 from pathlib import Path
 
-from cool_colab_mcp.browser.adapters.colab import approval, runtime_type
+import asyncio
+
+from cool_colab_mcp.browser.adapters.colab import approval, drive_mount, runtime_type
 from cool_colab_mcp.constants import (
     AUTOMATION_FLAG,
     BROWSER_PROFILE_DIR_NAME,
@@ -47,6 +49,7 @@ class BrowserController:
         use_chrome: bool = True,
         cdp_url: str | None = None,
         session_file: Path | None = None,
+        auto_drive: bool = False,
     ):
         self.headless = headless
         # Real Chrome by default: Google refuses sign-in in Playwright's bundled
@@ -60,11 +63,16 @@ class BrowserController:
         # automation at sign-in, so a headless browser holding these cookies is
         # already authenticated — this is what makes a terminal-only server work.
         self.session_file = session_file
+        # Auto-approve Google Drive mount consent (Colab dialog + OAuth popup).
+        # Off by default: granting it lets notebook code modify the user's Drive
+        # files, so it needs the operator's explicit opt-in.
+        self.auto_drive = auto_drive
         self._playwright = None
         self._context = None
         self._owns_browser = True
         self._browser = None
         self._pages: dict[str, object] = {}
+        self._drive_watchers: dict[str, asyncio.Task] = {}
 
     async def start(self) -> None:
         """Launch Chrome with the persistent profile, or attach to a running one."""
@@ -159,6 +167,11 @@ class BrowserController:
         logger.info("opened notebook tab (notebook_id=%s, port=%d)", notebook_id, port)
         await approval.approve(page, token, port, DIALOG_TIMEOUT_MS)
         logger.info("approved MCP dialog (notebook_id=%s)", notebook_id)
+        if self.auto_drive and notebook_id not in self._drive_watchers:
+            self._drive_watchers[notebook_id] = asyncio.create_task(
+                drive_mount.watch(page, self._context)
+            )
+            logger.info("drive auto-approval watcher started (%s)", notebook_id)
 
     async def set_runtime_type(self, notebook_id: str, accelerator: str) -> None:
         """Bind this notebook's already-open tab to `accelerator` via the UI.
@@ -217,14 +230,22 @@ class BrowserController:
         await page.goto(url, wait_until="domcontentloaded")
         return page
 
+    def _cancel_drive_watcher(self, notebook_id: str) -> None:
+        task = self._drive_watchers.pop(notebook_id, None)
+        if task is not None:
+            task.cancel()
+
     async def close(self, notebook_id: str) -> None:
         """Close one notebook's tab."""
+        self._cancel_drive_watcher(notebook_id)
         page = self._pages.pop(notebook_id, None)
         if page is not None:
             await page.close()
 
     async def aclose(self) -> None:
         """Shut down what we started; never close a browser the operator owns."""
+        for notebook_id in list(self._drive_watchers):
+            self._cancel_drive_watcher(notebook_id)
         self._pages.clear()
         if self._context is not None and self._owns_browser:
             await self._context.close()
